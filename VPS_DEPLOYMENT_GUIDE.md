@@ -40,11 +40,15 @@ chmod +x install.sh
 
 #### 创建配置文件
 ```bash
+# 复制配置模板
 cp config.example.py config.py
-nano config.py
+cp config_local.example.py config_local.py
+
+# 编辑个人配置（重要！）
+nano config_local.py
 ```
 
-#### 配置示例（重要部分）
+#### 配置个人设置（config_local.py）
 ```python
 # Telegram Bot Token (必填)
 TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
@@ -52,18 +56,23 @@ TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 # SQLite数据库路径（推荐使用绝对路径）
 DATABASE_URL = "sqlite:///opt/greed_bot/bot.db"
 
-# 或者使用相对路径（在项目目录下）
-# DATABASE_URL = "sqlite:///bot.db"
-
 # 默认通知时间
 DEFAULT_NOTIFICATION_TIME = "09:00"
 
 # 时区设置
 DEFAULT_TIMEZONE = "Asia/Shanghai"  # 根据需要调整
 
+# 管理员用户ID（可选）
+ADMIN_USER_ID = 123456789  # 您的Telegram用户ID
+
 # 日志设置
 LOG_LEVEL = "INFO"
 LOG_FILE = "/opt/greed_bot/bot.log"
+```
+
+#### 验证配置
+```bash
+python validate_config.py
 ```
 
 ## 💾 SQLite数据库说明
@@ -296,9 +305,15 @@ sudo git clone https://github.com/zijianwang90/greed_bot.git
 cd greed_bot
 sudo chown -R $USER:$USER /opt/greed_bot
 chmod +x install.sh
+chmod +x start_bot.sh
+chmod +x validate_config.py
 ./install.sh
-echo "请编辑 config.py 文件添加您的Bot Token"
-echo "然后运行: sudo systemctl start greed-bot"
+echo ""
+echo "📋 下一步:"
+echo "1. 编辑 config_local.py 文件添加您的Bot Token"
+echo "2. 运行 python validate_config.py 验证配置"
+echo "3. 运行 ./start_bot.sh 启动Bot"
+echo "   或设置 systemd 服务: sudo systemctl start greed-bot"
 EOF
 
 chmod +x /tmp/deploy.sh

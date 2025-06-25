@@ -43,10 +43,16 @@ else
     exit 1
 fi
 
-# Check if config.py exists
+# Check if config files exist
 if [ ! -f "config.py" ]; then
-    echo -e "${RED}❌ Configuration file not found!${NC}"
-    echo -e "${YELLOW}💡 Please copy config.example.py to config.py and configure it${NC}"
+    echo -e "${RED}❌ Main configuration file not found!${NC}"
+    echo -e "${YELLOW}💡 Please copy config.example.py to config.py${NC}"
+    exit 1
+fi
+
+if [ ! -f "config_local.py" ]; then
+    echo -e "${RED}❌ Local configuration file not found!${NC}"
+    echo -e "${YELLOW}💡 Please copy config_local.example.py to config_local.py and configure your Bot Token${NC}"
     exit 1
 fi
 

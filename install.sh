@@ -77,14 +77,23 @@ else
     fi
 fi
 
-# Create config file if it doesn't exist
+# Create config files if they don't exist
 if [ ! -f "config.py" ]; then
-    echo "⚙️ Creating configuration file..."
+    echo "⚙️ Creating main configuration file..."
     cp config.example.py config.py
-    echo "✅ Config file created from template"
-    echo "📝 Please edit config.py with your bot token and settings"
+    echo "✅ Main config file created from template"
 else
-    echo "✅ Configuration file already exists"
+    echo "✅ Main configuration file already exists"
+fi
+
+if [ ! -f "config_local.py" ]; then
+    echo "⚙️ Creating local configuration file..."
+    cp config_local.example.py config_local.py
+    echo "✅ Local config file created from template"
+    echo "📝 Please edit config_local.py with your bot token and personal settings"
+    echo "💡 Main business settings can be adjusted in config.py"
+else
+    echo "✅ Local configuration file already exists"
 fi
 
 echo ""

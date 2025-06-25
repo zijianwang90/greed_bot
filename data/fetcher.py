@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 
 from config import (
-    CNN_FEAR_GREED_URL,
+    CNN_FEAR_GREED_API,
     BACKUP_DATA_SOURCE,
     REQUEST_TIMEOUT,
     MAX_RETRIES
@@ -58,7 +58,7 @@ class FearGreedDataFetcher:
     async def _fetch_from_cnn_api(self) -> Optional[Dict]:
         """从 CNN API 获取数据"""
         try:
-            async with self.session.get(CNN_FEAR_GREED_URL) as response:
+            async with self.session.get(CNN_FEAR_GREED_API) as response:
                 if response.status == 200:
                     data = await response.json()
                     return self._parse_cnn_data(data)
@@ -318,4 +318,26 @@ async def fetch_all_indicators() -> Dict:
 async def get_fear_greed_index() -> Optional[Dict]:
     """获取恐慌贪婪指数的便捷函数"""
     async with FearGreedDataFetcher() as fetcher:
-        return await fetcher.get_current_fear_greed_index() 
+        return await fetcher.get_current_fear_greed_index()
+
+
+# 兼容性别名
+class DataFetcher(FearGreedDataFetcher):
+    """DataFetcher 兼容性别名"""
+    
+    async def get_current_fear_greed_index(self) -> Optional[Dict]:
+        """获取当前恐慌贪婪指数 - 兼容性方法"""
+        data = await super().get_current_fear_greed_index()
+        if data:
+            # 转换数据格式以匹配 handlers.py 的预期
+            return {
+                'score': data.get('current_value', 0),
+                'rating': data.get('rating', 'Unknown'),
+                'timestamp': data.get('last_update', ''),
+                'previous_close': data.get('previous_close'),
+                'week_ago': data.get('week_ago'),
+                'month_ago': data.get('month_ago'),
+                'year_ago': data.get('year_ago'),
+                'source': data.get('source', 'Unknown')
+            }
+        return None 

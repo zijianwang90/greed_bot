@@ -1,56 +1,41 @@
 """
-主配置文件模板
-此文件包含经常需要调整的业务配置
-不经常变动的配置（如Telegram Token）请在 config_local.py 中设置
+Configuration template for CNN Fear & Greed Index Telegram Bot
+Copy this file to config.py and fill in your values
 """
 
 import os
 from dotenv import load_dotenv
 
-# 加载环境变量
+# Load environment variables
 load_dotenv()
 
-# ==================== 导入本地配置 ====================
-try:
-    from config_local import (
-        TELEGRAM_BOT_TOKEN, ADMIN_USER_ID, BOT_USERNAME,
-        DATABASE_URL, DB_POOL_SIZE, DB_MAX_OVERFLOW,
-        DEFAULT_NOTIFICATION_TIME, DEFAULT_TIMEZONE,
-        USE_WEBHOOK, WEBHOOK_URL, WEBHOOK_PORT, WEBHOOK_LISTEN,
-        WEBHOOK_SSL_CERT, WEBHOOK_SSL_PRIV,
-        LOG_LEVEL, LOG_FILE, LOG_TO_CONSOLE,
-        ENABLE_ERROR_REPORTING, ERROR_WEBHOOK_URL,
-        DEBUG, DEV_MODE, TEST_MODE
-    )
-except ImportError:
-    print("⚠️  警告: 未找到 config_local.py 文件")
-    print("📋 请复制 config_local.example.py 为 config_local.py 并配置您的设置")
-    
-    # 提供默认值以防导入失败
-    TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-    ADMIN_USER_ID = None
-    BOT_USERNAME = "your_bot_username"
-    DATABASE_URL = "sqlite:///bot.db"
-    DB_POOL_SIZE = 10
-    DB_MAX_OVERFLOW = 20
-    DEFAULT_NOTIFICATION_TIME = "09:00"
-    DEFAULT_TIMEZONE = "UTC"
-    USE_WEBHOOK = False
-    WEBHOOK_URL = ""
-    WEBHOOK_PORT = 8443
-    WEBHOOK_LISTEN = "0.0.0.0"
-    WEBHOOK_SSL_CERT = ""
-    WEBHOOK_SSL_PRIV = ""
-    LOG_LEVEL = "INFO"
-    LOG_FILE = "bot.log"
-    LOG_TO_CONSOLE = True
-    ENABLE_ERROR_REPORTING = False
-    ERROR_WEBHOOK_URL = ""
-    DEBUG = False
-    DEV_MODE = False
-    TEST_MODE = False
+# ==================== TELEGRAM BOT SETTINGS ====================
 
-# ==================== 定时任务设置 ====================
+# Required: Get this from @BotFather on Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+
+# Optional: Your Telegram user ID for admin commands
+ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", None)
+
+# Bot username (without @)
+BOT_USERNAME = os.getenv("BOT_USERNAME", "your_bot_username")
+
+# ==================== DATABASE SETTINGS ====================
+
+# Database URL - SQLite for development, PostgreSQL for production
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///bot.db")
+
+# Database pool settings (for PostgreSQL)
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "10"))
+DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+
+# ==================== SCHEDULING SETTINGS ====================
+
+# Default notification time (24-hour format)
+DEFAULT_NOTIFICATION_TIME = os.getenv("DEFAULT_NOTIFICATION_TIME", "09:00")
+
+# Default timezone
+DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
 # How often to update market data (minutes)
 DATA_UPDATE_INTERVAL = int(os.getenv("DATA_UPDATE_INTERVAL", "60"))
@@ -63,22 +48,13 @@ NOTIFICATION_CHECK_INTERVAL = int(os.getenv("NOTIFICATION_CHECK_INTERVAL", "1"))
 # CNN Fear & Greed Index API
 CNN_FEAR_GREED_API = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 
-# Backup data source (fallback API)
-BACKUP_DATA_SOURCE = os.getenv("BACKUP_DATA_SOURCE", "")
-
-# Request timeout (seconds)
-REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
-
-# Maximum retries for failed requests
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
-
 # Alternative data sources (comma-separated)
 ALTERNATIVE_DATA_SOURCES = os.getenv("ALTERNATIVE_DATA_SOURCES", "").split(",")
 
 # How many days of historical data to fetch
 HISTORICAL_DAYS = int(os.getenv("HISTORICAL_DAYS", "30"))
 
-# Data source timeout (seconds) - keeping for backward compatibility
+# Data source timeout (seconds)
 API_TIMEOUT = int(os.getenv("API_TIMEOUT", "30"))
 
 # Rate limiting settings
@@ -86,64 +62,94 @@ MAX_REQUESTS_PER_MINUTE = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "60"))
 
 # ==================== FEATURE SETTINGS ====================
 
-# ==================== 语言设置 ====================
-
-# 默认语言
+# Language settings
 DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "en")  # en, zh
 SUPPORTED_LANGUAGES = ["en", "zh"]
 
-# ==================== 功能开关 ====================
-
-# 启用/禁用功能
+# Enable/disable features
 ENABLE_HISTORICAL_DATA = os.getenv("ENABLE_HISTORICAL_DATA", "true").lower() == "true"
 ENABLE_VIX_DATA = os.getenv("ENABLE_VIX_DATA", "true").lower() == "true"
 ENABLE_MARKET_INDICATORS = os.getenv("ENABLE_MARKET_INDICATORS", "true").lower() == "true"
 ENABLE_CHARTS = os.getenv("ENABLE_CHARTS", "false").lower() == "true"
 
-# 最大用户数限制（0 = 无限制）
+# Maximum users per bot (0 = unlimited)
 MAX_USERS = int(os.getenv("MAX_USERS", "0"))
 
-# ==================== 通知内容设置 ====================
+# ==================== NOTIFICATION SETTINGS ====================
 
-# 消息格式化
+# Message formatting
 USE_RICH_FORMATTING = os.getenv("USE_RICH_FORMATTING", "true").lower() == "true"
 INCLUDE_EMOJIS = os.getenv("INCLUDE_EMOJIS", "true").lower() == "true"
 
-# 通知内容
+# Notification content
 INCLUDE_ANALYSIS = os.getenv("INCLUDE_ANALYSIS", "true").lower() == "true"
 INCLUDE_HISTORICAL_COMPARISON = os.getenv("INCLUDE_HISTORICAL_COMPARISON", "true").lower() == "true"
 INCLUDE_TREND_ANALYSIS = os.getenv("INCLUDE_TREND_ANALYSIS", "true").lower() == "true"
 
-# 静默时段（不发送通知的时间）
+# Quiet hours (when not to send notifications)
 QUIET_HOURS_START = os.getenv("QUIET_HOURS_START", "22:00")
 QUIET_HOURS_END = os.getenv("QUIET_HOURS_END", "07:00")
 
-# ==================== 日志配置 ====================
+# ==================== LOGGING SETTINGS ====================
 
-# 日志轮转设置
+# Logging level
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+# Log file path
+LOG_FILE = os.getenv("LOG_FILE", "bot.log")
+
+# Enable console logging
+LOG_TO_CONSOLE = os.getenv("LOG_TO_CONSOLE", "true").lower() == "true"
+
+# Log rotation settings
 LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", "10485760"))  # 10MB
 LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "3"))
 
-# ==================== 安全设置 ====================
+# ==================== SECURITY SETTINGS ====================
 
-# 速率限制
+# Enable webhook mode (False for polling)
+USE_WEBHOOK = os.getenv("USE_WEBHOOK", "false").lower() == "true"
+
+# Webhook settings (if enabled)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8443"))
+WEBHOOK_LISTEN = os.getenv("WEBHOOK_LISTEN", "0.0.0.0")
+
+# SSL certificate paths (for webhook)
+WEBHOOK_SSL_CERT = os.getenv("WEBHOOK_SSL_CERT", "")
+WEBHOOK_SSL_PRIV = os.getenv("WEBHOOK_SSL_PRIV", "")
+
+# Rate limiting
 ENABLE_RATE_LIMITING = os.getenv("ENABLE_RATE_LIMITING", "true").lower() == "true"
-RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # 秒
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "20"))
 
-# ==================== 开发设置 ====================
+# ==================== DEVELOPMENT SETTINGS ====================
 
-# 使用模拟数据进行测试
+# Debug mode
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+# Enable development features
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+
+# Test mode (don't send actual notifications)
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+
+# Mock data for testing
 USE_MOCK_DATA = os.getenv("USE_MOCK_DATA", "false").lower() == "true"
 
-# ==================== 监控设置 ====================
+# ==================== MONITORING SETTINGS ====================
 
-# 健康检查端点
+# Health check endpoint
 ENABLE_HEALTH_CHECK = os.getenv("ENABLE_HEALTH_CHECK", "true").lower() == "true"
 HEALTH_CHECK_PORT = int(os.getenv("HEALTH_CHECK_PORT", "8080"))
 
-# 指标收集
+# Metrics collection
 ENABLE_METRICS = os.getenv("ENABLE_METRICS", "false").lower() == "true"
+
+# Error reporting
+ENABLE_ERROR_REPORTING = os.getenv("ENABLE_ERROR_REPORTING", "false").lower() == "true"
+ERROR_WEBHOOK_URL = os.getenv("ERROR_WEBHOOK_URL", "")
 
 # ==================== PERFORMANCE SETTINGS ====================
 

@@ -82,19 +82,23 @@ install.bat
 
 3. **Set up configuration**:
    ```bash
+   # Copy configuration templates
    cp config.example.py config.py
-   # Edit config.py with your settings
+   cp config_local.example.py config_local.py
+   
+   # Edit your personal settings (Bot Token, Database, etc.)
+   nano config_local.py
    ```
 
 4. **Configure your Telegram Bot**:
    - Message @BotFather on Telegram
    - Create a new bot with `/newbot`
    - Get your bot token
-   - Add the token to `config.py`
+   - Add the token to `config_local.py`
 
-5. **Test the installation (optional)**:
+5. **Validate configuration (optional)**:
    ```bash
-   python test_basic.py
+   python validate_config.py
    ```
 
 6. **Run the bot**:
@@ -104,7 +108,10 @@ install.bat
 
 ## Configuration 🔧
 
-Edit `config.py` with your settings:
+This project uses a two-file configuration system:
+
+### Personal Settings (`config_local.py`)
+Edit this file with your personal/secret configurations that don't change often:
 
 ```python
 # Telegram Bot Token (required)
@@ -120,13 +127,34 @@ DEFAULT_NOTIFICATION_TIME = "09:00"
 # Timezone
 DEFAULT_TIMEZONE = "UTC"
 
+# Admin settings
+ADMIN_USER_ID = None  # Your Telegram user ID
+```
+
+### Business Settings (`config.py`)
+This file contains business logic settings that might change during development:
+
+```python
+# Language settings
+DEFAULT_LANGUAGE = "en"  # en, zh
+
+# Feature toggles
+ENABLE_HISTORICAL_DATA = True
+ENABLE_VIX_DATA = True
+ENABLE_MARKET_INDICATORS = True
+
 # Update intervals (minutes)
 DATA_UPDATE_INTERVAL = 60
 NOTIFICATION_CHECK_INTERVAL = 1
 
-# Language settings
-DEFAULT_LANGUAGE = "en"  # en, zh
+# Rate limiting
+RATE_LIMIT_MAX_REQUESTS = 20
 ```
+
+### Benefits of This Structure:
+- 🔒 **Personal settings** (tokens, passwords) stay in `config_local.py` (git-ignored)
+- 🔄 **Business settings** can be updated via git without losing personal configs
+- 📦 **Easy deployment** - just copy your `config_local.py` to new deployments
 
 ## Bot Commands 🤖
 
