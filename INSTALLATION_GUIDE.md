@@ -8,7 +8,7 @@ This guide helps you install the Fear & Greed Index Bot and resolve common depen
 
 **Linux/macOS:**
 ```bash
-git clone https://github.com/yourusername/greed_bot.git
+git clone https://github.com/zijianwang90/greed_bot.git
 cd greed_bot
 chmod +x install.sh
 ./install.sh
@@ -16,7 +16,7 @@ chmod +x install.sh
 
 **Windows:**
 ```cmd
-git clone https://github.com/yourusername/greed_bot.git
+git clone https://github.com/zijianwang90/greed_bot.git
 cd greed_bot
 install.bat
 ```
@@ -41,7 +41,7 @@ If the automatic installation doesn't work, follow these steps:
 ### 2. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/greed_bot.git
+git clone https://github.com/zijianwang90/greed_bot.git
 cd greed_bot
 ```
 

@@ -41,7 +41,7 @@ The bot tracks multiple indicators to provide comprehensive market sentiment ana
 
 **Linux/macOS:**
 ```bash
-git clone https://github.com/yourusername/greed_bot.git
+git clone https://github.com/zijianwang90/greed_bot.git
 cd greed_bot
 chmod +x install.sh
 ./install.sh
@@ -49,7 +49,7 @@ chmod +x install.sh
 
 **Windows:**
 ```cmd
-git clone https://github.com/yourusername/greed_bot.git
+git clone https://github.com/zijianwang90/greed_bot.git
 cd greed_bot
 install.bat
 ```
@@ -58,7 +58,7 @@ install.bat
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/greed_bot.git
+   git clone https://github.com/zijianwang90/greed_bot.git
    cd greed_bot
    ```
 
