@@ -52,15 +52,41 @@ fi
 
 # Check if main dependencies are installed
 echo -e "${YELLOW}🔍 Checking dependencies...${NC}"
-python -c "import telegram" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ python-telegram-bot not installed!${NC}"
-    echo -e "${YELLOW}💡 Running: pip install -r requirements-minimal.txt${NC}"
+
+# Check core dependencies
+dependencies=("telegram" "aiosqlite" "sqlalchemy" "requests")
+missing_deps=()
+
+for dep in "${dependencies[@]}"; do
+    python -c "import $dep" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        missing_deps+=("$dep")
+    fi
+done
+
+if [ ${#missing_deps[@]} -gt 0 ]; then
+    echo -e "${RED}❌ Missing dependencies: ${missing_deps[*]}${NC}"
+    echo -e "${YELLOW}💡 Installing missing dependencies...${NC}"
     pip install -r requirements-minimal.txt
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Failed to install dependencies${NC}"
-        exit 1
+        echo -e "${YELLOW}💡 Trying manual installation of core packages...${NC}"
+        pip install aiosqlite python-telegram-bot sqlalchemy requests apscheduler python-dotenv
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}❌ Failed to install core dependencies${NC}"
+            exit 1
+        fi
     fi
+    
+    # Verify installation
+    echo -e "${YELLOW}🔍 Verifying installation...${NC}"
+    for dep in "${dependencies[@]}"; do
+        python -c "import $dep" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}❌ Still missing: $dep${NC}"
+            exit 1
+        fi
+    done
 fi
 
 echo -e "${GREEN}✅ All checks passed!${NC}"
