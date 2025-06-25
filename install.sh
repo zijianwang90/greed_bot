@@ -21,17 +21,32 @@ else
     exit 1
 fi
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
+# Create virtual environment if it doesn't exist or is incomplete
+if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+    if [ -d "venv" ]; then
+        echo "⚠️ Virtual environment exists but is incomplete, removing..."
+        rm -rf venv
+    fi
     echo "📦 Creating virtual environment..."
     python3 -m venv venv
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to create virtual environment"
+        echo "💡 Try running: sudo apt-get install python3-venv"
+        exit 1
+    fi
 else
     echo "✅ Virtual environment already exists"
 fi
 
 # Activate virtual environment
 echo "🔄 Activating virtual environment..."
-source venv/bin/activate
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+else
+    echo "❌ Virtual environment activation file not found"
+    echo "🔧 Please delete the venv folder and run the script again"
+    exit 1
+fi
 
 # Upgrade pip
 echo "⬆️ Upgrading pip..."
