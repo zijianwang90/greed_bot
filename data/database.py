@@ -149,9 +149,10 @@ class UserRepository:
     @staticmethod
     async def get_subscribed_users() -> List[User]:
         """获取所有订阅用户"""
+        from sqlalchemy import select
         async with get_db_session() as session:
             result = await session.execute(
-                session.query(User).filter(User.is_subscribed == True)
+                select(User).filter(User.is_subscribed == True)
             )
             return result.scalars().all()
     
@@ -176,3 +177,20 @@ async def is_user_subscribed(telegram_id: int) -> bool:
     """检查用户是否订阅"""
     user = await UserRepository.get_user_by_telegram_id(telegram_id)
     return user.is_subscribed if user else False
+
+
+async def get_subscribed_users() -> List[User]:
+    """获取所有订阅用户的便捷函数"""
+    return await UserRepository.get_subscribed_users()
+
+
+async def update_last_notification(telegram_id: int, timestamp: datetime) -> bool:
+    """更新用户最后通知时间"""
+    async with get_db_session() as session:
+        user = await session.get(User, telegram_id)
+        if user:
+            user.last_notification_sent = timestamp
+            user.updated_at = datetime.utcnow()
+            await session.commit()
+            return True
+        return False
