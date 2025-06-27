@@ -9,7 +9,9 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from data.database import get_user_or_create, UserRepository, is_user_subscribed
-from data.fetcher import DataFetcher
+# Temporarily use mock data for testing
+# from data.fetcher import DataFetcher
+from data.mock_fetcher import MockDataFetcher as DataFetcher
 
 import config
 
