@@ -194,7 +194,8 @@ class GreedBot:
                 
         except Exception as e:
             logger.error(f"Error running bot: {e}")
-            raise
+            # We don't raise the exception here to allow for a graceful shutdown
+            # in the main function's finally block.
     
     async def stop(self):
         """Stop the bot gracefully"""
@@ -246,16 +247,8 @@ async def main():
     finally:
         await bot.stop()
 
-def signal_handler(signum, frame):
-    """Handle system signals"""
-    logger.info(f"Received signal {signum}, shutting down...")
-    if bot.is_running:
-        asyncio.create_task(bot.stop())
-
 if __name__ == "__main__":
-    # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # Signal handlers are removed to let the library handle them.
     
     # Run the bot
     try:
