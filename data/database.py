@@ -194,3 +194,30 @@ async def update_last_notification(telegram_id: int, timestamp: datetime) -> boo
             await session.commit()
             return True
         return False
+
+
+async def get_user(telegram_id: int) -> Optional[User]:
+    """获取用户信息的便捷函数"""
+    return await UserRepository.get_user_by_telegram_id(telegram_id)
+
+
+async def update_user_settings(telegram_id: int, **kwargs) -> bool:
+    """更新用户设置的便捷函数"""
+    async with get_db_session() as session:
+        user = await session.get(User, telegram_id)
+        if user:
+            # 更新允许的字段
+            for key, value in kwargs.items():
+                if key == 'language_code':
+                    user.language_code = value
+                elif key == 'notification_time':
+                    user.push_time = value
+                elif key == 'timezone':
+                    user.timezone = value
+                elif key == 'is_subscribed':
+                    user.is_subscribed = value
+            
+            user.updated_at = datetime.utcnow()
+            await session.commit()
+            return True
+        return False
