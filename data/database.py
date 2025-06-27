@@ -57,6 +57,8 @@ async def init_database():
 
 async def init_system_config():
     """初始化系统配置"""
+    from sqlalchemy import select
+    
     default_configs = [
         {'key': 'bot_version', 'value': '1.0.0', 'description': 'Bot 版本号'},
         {'key': 'last_data_update', 'value': '', 'description': '最后数据更新时间'},
@@ -67,7 +69,12 @@ async def init_system_config():
     
     async with AsyncSessionLocal() as session:
         for config in default_configs:
-            existing = await session.get(SystemConfig, config['key'])
+            # 使用正确的查询方式查找已存在的配置
+            result = await session.execute(
+                select(SystemConfig).filter(SystemConfig.key == config['key'])
+            )
+            existing = result.scalar_one_or_none()
+            
             if not existing:
                 new_config = SystemConfig(**config)
                 session.add(new_config)
