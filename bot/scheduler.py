@@ -61,7 +61,8 @@ class NotificationScheduler:
                 name="Daily Notification Check",
                 misfire_grace_time=60,
                 coalesce=True,
-                max_instances=1
+                max_instances=1,
+                replace_existing=True
             )
             
             # Data update job - runs every hour to fetch fresh market data
@@ -72,7 +73,8 @@ class NotificationScheduler:
                 name="Market Data Update",
                 misfire_grace_time=300,
                 coalesce=True,
-                max_instances=1
+                max_instances=1,
+                replace_existing=True
             )
             
             # Health check job - runs every 15 minutes
@@ -83,7 +85,8 @@ class NotificationScheduler:
                 name="Health Check",
                 misfire_grace_time=60,
                 coalesce=True,
-                max_instances=1
+                max_instances=1,
+                replace_existing=True
             )
             
             # Cleanup job - runs daily at 02:00 UTC
@@ -92,7 +95,8 @@ class NotificationScheduler:
                 trigger=CronTrigger(hour=2, minute=0),
                 id="cleanup_old_data",
                 name="Cleanup Old Data",
-                misfire_grace_time=3600
+                misfire_grace_time=3600,
+                replace_existing=True
             )
             
             logger.info("Scheduled jobs set up successfully")
