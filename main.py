@@ -201,22 +201,22 @@ class GreedBot:
         """Stop the bot gracefully"""
         logger.info("Stopping bot...")
         self.is_running = False
-        
+
         try:
             # Stop scheduler
             if self.scheduler:
                 self.scheduler.stop()
                 logger.info("Scheduler stopped")
-            
+
             # Stop application
-            if self.app:
+            if self.app and self.app.running:
                 await self.app.stop()
                 await self.app.shutdown()
                 logger.info("Application stopped")
-                
+
         except Exception as e:
             logger.error(f"Error stopping bot: {e}")
-        
+
         logger.info("Bot stopped successfully")
 
 # Global bot instance

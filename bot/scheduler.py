@@ -30,6 +30,10 @@ class NotificationScheduler:
         
     async def start(self):
         """Start the scheduler"""
+        if self.scheduler.running:
+            logger.warning("Scheduler is already running, skipping start.")
+            return
+
         try:
             # Add jobs
             await self._setup_jobs()
