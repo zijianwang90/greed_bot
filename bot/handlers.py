@@ -217,6 +217,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await current_callback(query)
     elif callback_data == "subscribe":
         await subscribe_callback(query)
+    elif callback_data == "unsubscribe":
+        await unsubscribe_callback(query)
     elif callback_data == "help":
         await help_callback(query)
 
@@ -267,6 +269,24 @@ async def subscribe_callback(query):
         logger.error(f"Error in subscribe_callback: {e}")
         await query.edit_message_text("❌ Error processing subscription.")
 
+async def unsubscribe_callback(query):
+    """Handle unsubscribe button callback"""
+    user_id = query.from_user.id
+    
+    try:
+        success = await UserRepository.update_user_subscription(user_id, False)
+        
+        if success:
+            message = "❌ Successfully unsubscribed from daily updates!"
+        else:
+            message = "❌ Error unsubscribing. Please try again."
+        
+        await query.edit_message_text(message)
+        
+    except Exception as e:
+        logger.error(f"Error in unsubscribe_callback: {e}")
+        await query.edit_message_text("❌ Error processing unsubscription.")
+
 async def help_callback(query):
     """Handle help button callback"""
     help_text = (
@@ -275,6 +295,8 @@ async def help_callback(query):
         "• /current - Current index\n"
         "• /subscribe - Daily updates\n"
         "• /unsubscribe - Stop updates\n"
+        "• /settings - Configure preferences\n"
+        "• /history - Historical data\n"
         "• /help - This help\n\n"
         "**Index Scale:**\n"
         "• 0-24: Extreme Fear 😨\n"
@@ -326,4 +348,122 @@ def get_sentiment_emoji(index_value):
         else:
             return "🤑"
     except (ValueError, TypeError):
-        return "❓" 
+        return "❓"
+
+async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /settings command"""
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        return
+    
+    try:
+        # Check if user is subscribed
+        is_subscribed = await is_user_subscribed(user_id)
+        subscription_status = "🔔 Subscribed" if is_subscribed else "❌ Not subscribed"
+        
+        settings_msg = (
+            "⚙️ **Your Current Settings:**\n\n"
+            f"🔔 **Subscription:** {subscription_status}\n"
+            f"⏰ **Notification Time:** {config.DEFAULT_NOTIFICATION_TIME} UTC\n"
+            f"🌍 **Timezone:** UTC\n\n"
+            "**Available Actions:**"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔔 Toggle Subscription", callback_data="subscribe" if not is_subscribed else "unsubscribe")
+            ],
+            [
+                InlineKeyboardButton("📊 Current Index", callback_data="current"),
+                InlineKeyboardButton("❓ Help", callback_data="help")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            settings_msg,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in settings_handler: {e}")
+        await update.message.reply_text(
+            "❌ Error loading settings. Please try again later."
+        )
+
+async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /history command"""
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        return
+    
+    loading_msg = await update.message.reply_text("📈 Fetching historical data...")
+    
+    try:
+        # For now, provide a simple message about historical data
+        message = (
+            "📈 **Historical Data Feature**\n\n"
+            "This feature will show historical Fear & Greed Index data and trends.\n\n"
+            "📊 **Coming Soon:**\n"
+            "• 7-day trends\n"
+            "• 30-day averages\n"
+            "• Market correlation data\n\n"
+            "For now, use /current to get the latest index value."
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 Current Index", callback_data="current"),
+                InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await loading_msg.edit_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in history_handler: {e}")
+        await loading_msg.edit_text(
+            "❌ Error fetching historical data. Please try again later."
+        )
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle general text messages"""
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        return
+    
+    # General help message for any text input
+    response = (
+        "🤖 I'm here to help you track market sentiment!\n\n"
+        "📊 Use /current to get the latest Fear & Greed Index\n"
+        "🔔 Use /subscribe for daily updates\n"
+        "⚙️ Use /settings to configure preferences\n"
+        "❓ Use /help for all commands\n\n"
+        "Or use the buttons below:"
+    )
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 Current", callback_data="current"),
+            InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe")
+        ],
+        [
+            InlineKeyboardButton("❓ Help", callback_data="help")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        response,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=reply_markup
+    ) 
