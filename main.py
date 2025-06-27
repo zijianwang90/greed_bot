@@ -187,7 +187,9 @@ if __name__ == "__main__":
     # The library's run_polling() handles signals gracefully.
     # No custom signal handlers needed.
     try:
-        asyncio.run(main())
+        # Use get_event_loop() instead of asyncio.run() to avoid conflicts
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
     except KeyboardInterrupt:
         logger.info("Bot shutdown requested by user.")
     except Exception as e:
