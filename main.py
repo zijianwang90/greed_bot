@@ -123,9 +123,9 @@ class GreedBot:
             # Add handlers
             self.setup_handlers()
             
-            # Setup scheduler
-            logger.info("Setting up scheduler...")
-            self.scheduler = await setup_scheduler(self.app)
+            # # Setup scheduler (Temporarily disabled for debugging)
+            # logger.info("Setting up scheduler...")
+            # self.scheduler = await setup_scheduler(self.app)
             
             logger.info("Bot initialization completed successfully!")
             
@@ -167,13 +167,10 @@ class GreedBot:
         self.is_running = True
         
         try:
-            # Initialize the application
-            await self.app.initialize()
-            
-            # Start the scheduler
-            if self.scheduler:
-                await self.scheduler.start()
-                logger.info("Scheduler started")
+            # # Start the scheduler (Temporarily disabled for debugging)
+            # if self.scheduler:
+            #     await self.scheduler.start()
+            #     logger.info("Scheduler started")
             
             # Start the bot
             if config.USE_WEBHOOK:
@@ -188,6 +185,8 @@ class GreedBot:
                 )
             else:
                 logger.info("Starting polling mode")
+                # run_polling() is a blocking call that runs the bot until
+                # a signal is received. It also calls app.initialize() and app.start().
                 await self.app.run_polling(
                     allowed_updates=Update.ALL_TYPES,
                     drop_pending_updates=True
@@ -201,22 +200,22 @@ class GreedBot:
         """Stop the bot gracefully"""
         logger.info("Stopping bot...")
         self.is_running = False
-
+        
         try:
-            # Stop scheduler
-            if self.scheduler:
-                self.scheduler.stop()
-                logger.info("Scheduler stopped")
-
+            # # Stop scheduler (Temporarily disabled for debugging)
+            # if self.scheduler:
+            #     self.scheduler.stop()
+            #     logger.info("Scheduler stopped")
+            
             # Stop application
             if self.app and self.app.running:
                 await self.app.stop()
                 await self.app.shutdown()
                 logger.info("Application stopped")
-
+                
         except Exception as e:
             logger.error(f"Error stopping bot: {e}")
-
+        
         logger.info("Bot stopped successfully")
 
 # Global bot instance
