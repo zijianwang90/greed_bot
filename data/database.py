@@ -102,10 +102,18 @@ class UserRepository:
     @staticmethod
     async def create_user(user_dto: UserDTO) -> User:
         """创建新用户"""
+        from sqlalchemy import select
         async with get_db_session() as session:
-            # 检查用户是否已存在
-            existing_user = await session.get(User, user_dto.telegram_id)
+            # 检查用户是否已存在 - 使用 telegram_id 查询而不是主键
+            result = await session.execute(
+                select(User).filter(User.telegram_id == user_dto.telegram_id)
+            )
+            existing_user = result.scalar_one_or_none()
+            
             if existing_user:
+                # 更新最后活跃时间
+                existing_user.last_active = datetime.utcnow()
+                await session.commit()
                 return existing_user
             
             new_user = User(
@@ -124,14 +132,22 @@ class UserRepository:
     @staticmethod
     async def get_user_by_telegram_id(telegram_id: int) -> Optional[User]:
         """根据 Telegram ID 获取用户"""
+        from sqlalchemy import select
         async with get_db_session() as session:
-            return await session.get(User, telegram_id)
+            result = await session.execute(
+                select(User).filter(User.telegram_id == telegram_id)
+            )
+            return result.scalar_one_or_none()
     
     @staticmethod
     async def update_user_subscription(telegram_id: int, is_subscribed: bool) -> bool:
         """更新用户订阅状态"""
+        from sqlalchemy import select
         async with get_db_session() as session:
-            user = await session.get(User, telegram_id)
+            result = await session.execute(
+                select(User).filter(User.telegram_id == telegram_id)
+            )
+            user = result.scalar_one_or_none()
             if user:
                 user.is_subscribed = is_subscribed
                 user.updated_at = datetime.utcnow()
@@ -142,8 +158,12 @@ class UserRepository:
     @staticmethod
     async def update_user_push_time(telegram_id: int, push_time: str, timezone: str = None) -> bool:
         """更新用户推送时间"""
+        from sqlalchemy import select
         async with get_db_session() as session:
-            user = await session.get(User, telegram_id)
+            result = await session.execute(
+                select(User).filter(User.telegram_id == telegram_id)
+            )
+            user = result.scalar_one_or_none()
             if user:
                 user.push_time = push_time
                 if timezone:
@@ -166,8 +186,12 @@ class UserRepository:
     @staticmethod
     async def update_user_last_active(telegram_id: int):
         """更新用户最后活跃时间"""
+        from sqlalchemy import select
         async with get_db_session() as session:
-            user = await session.get(User, telegram_id)
+            result = await session.execute(
+                select(User).filter(User.telegram_id == telegram_id)
+            )
+            user = result.scalar_one_or_none()
             if user:
                 user.last_active = datetime.utcnow()
                 await session.commit()
@@ -193,8 +217,12 @@ async def get_subscribed_users() -> List[User]:
 
 async def update_last_notification(telegram_id: int, timestamp: datetime) -> bool:
     """更新用户最后通知时间"""
+    from sqlalchemy import select
     async with get_db_session() as session:
-        user = await session.get(User, telegram_id)
+        result = await session.execute(
+            select(User).filter(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
         if user:
             user.last_notification_sent = timestamp
             user.updated_at = datetime.utcnow()
@@ -210,8 +238,12 @@ async def get_user(telegram_id: int) -> Optional[User]:
 
 async def update_user_settings(telegram_id: int, **kwargs) -> bool:
     """更新用户设置的便捷函数"""
+    from sqlalchemy import select
     async with get_db_session() as session:
-        user = await session.get(User, telegram_id)
+        result = await session.execute(
+            select(User).filter(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
         if user:
             # 更新允许的字段
             for key, value in kwargs.items():
