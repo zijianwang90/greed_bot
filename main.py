@@ -101,38 +101,7 @@ class GreedBot:
         self.app: Optional[Application] = None
         self.data_fetcher: Optional[DataFetcher] = None
         self.scheduler = None
-        self.is_running = False
-        
-    async def initialize(self):
-        """Initialize bot components"""
-        logger.info("Initializing CNN Fear & Greed Index Bot...")
-        
-        try:
-            # Initialize database
-            logger.info("Initializing database...")
-            await init_database()
-            
-            # Initialize data fetcher
-            logger.info("Initializing data fetcher...")
-            self.data_fetcher = DataFetcher()
-            
-            # Create application
-            logger.info("Creating Telegram application...")
-            self.app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
-            
-            # Add handlers
-            self.setup_handlers()
-            
-            # # Setup scheduler (Temporarily disabled for debugging)
-            # logger.info("Setting up scheduler...")
-            # self.scheduler = await setup_scheduler(self.app)
-            
-            logger.info("Bot initialization completed successfully!")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize bot: {e}")
-            raise
-    
+
     def setup_handlers(self):
         """Setup all bot handlers"""
         if not self.app:
@@ -157,70 +126,45 @@ class GreedBot:
         self.app.add_error_handler(error_handler)
         
         logger.info("Bot handlers registered successfully")
-    
-    async def start(self):
-        """Start the bot"""
-        if not self.app:
-            raise RuntimeError("Bot not initialized")
-        
-        logger.info("Starting bot...")
-        self.is_running = True
-        
-        try:
-            # # Start the scheduler (Temporarily disabled for debugging)
-            # if self.scheduler:
-            #     await self.scheduler.start()
-            #     logger.info("Scheduler started")
-            
-            # Start the bot
-            if config.USE_WEBHOOK:
-                logger.info(f"Starting webhook on {config.WEBHOOK_URL}")
-                await self.app.run_webhook(
-                    listen=config.WEBHOOK_LISTEN,
-                    port=config.WEBHOOK_PORT,
-                    url_path=config.TELEGRAM_BOT_TOKEN,
-                    webhook_url=f"{config.WEBHOOK_URL}/{config.TELEGRAM_BOT_TOKEN}",
-                    cert=config.WEBHOOK_SSL_CERT if config.WEBHOOK_SSL_CERT else None,
-                    key=config.WEBHOOK_SSL_PRIV if config.WEBHOOK_SSL_PRIV else None
-                )
-            else:
-                logger.info("Starting polling mode")
-                # run_polling() is a blocking call that runs the bot until
-                # a signal is received. It also calls app.initialize() and app.start().
-                await self.app.run_polling(
-                    allowed_updates=Update.ALL_TYPES,
-                    drop_pending_updates=True
-                )
-                
-        except Exception as e:
-            logger.error(f"Error running bot: {e}")
-            # We don't raise the exception here to allow for a graceful shutdown
-            # in the main function's finally block.
-    
-    async def stop(self):
-        """Stop the bot gracefully"""
-        logger.info("Stopping bot...")
-        self.is_running = False
-        
-        try:
-            # # Stop scheduler (Temporarily disabled for debugging)
-            # if self.scheduler:
-            #     self.scheduler.stop()
-            #     logger.info("Scheduler stopped")
-            
-            # Stop application
-            if self.app and self.app.running:
-                await self.app.stop()
-                await self.app.shutdown()
-                logger.info("Application stopped")
-                
-        except Exception as e:
-            logger.error(f"Error stopping bot: {e}")
-        
-        logger.info("Bot stopped successfully")
 
-# Global bot instance
-bot = GreedBot()
+    async def run(self):
+        """Initializes, runs, and cleans up the bot."""
+        
+        # 1. Initialization
+        logger.info("Initializing CNN Fear & Greed Index Bot...")
+        try:
+            await init_database()
+            self.data_fetcher = DataFetcher()
+            self.app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
+            self.setup_handlers()
+            
+            # Setup scheduler
+            logger.info("Setting up scheduler...")
+            self.scheduler = await setup_scheduler(self.app)
+            logger.info("Bot initialization completed successfully!")
+
+        except Exception as e:
+            logger.critical(f"Bot failed to initialize: {e}")
+            raise
+
+        # 2. Running Phase
+        if self.scheduler:
+            await self.scheduler.start()
+            logger.info("Scheduler started.")
+
+        logger.info("Starting polling mode...")
+        await self.app.run_polling(
+            allowed_updates=Update.ALL_TYPES, 
+            drop_pending_updates=True
+        )
+
+        # 3. Cleanup Phase (after run_polling exits)
+        if self.scheduler:
+            self.scheduler.stop()
+            logger.info("Scheduler stopped.")
+        
+        logger.info("Bot shutdown complete.")
+
 
 async def main():
     """Main application entry point"""
@@ -232,29 +176,20 @@ async def main():
     logger.info(f"Test mode: {config.TEST_MODE}")
     logger.info(f"Language: {config.DEFAULT_LANGUAGE}")
     
+    bot = GreedBot()
     try:
-        # Initialize bot
-        await bot.initialize()
-        
-        # Start bot
-        await bot.start()
-        
-    except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt, shutting down...")
+        await bot.run()
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Bot crashed: {e}")
         sys.exit(1)
-    finally:
-        await bot.stop()
 
 if __name__ == "__main__":
-    # Signal handlers are removed to let the library handle them.
-    
-    # Run the bot
+    # The library's run_polling() handles signals gracefully.
+    # No custom signal handlers needed.
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Bot shutdown complete")
+        logger.info("Bot shutdown requested by user.")
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.critical(f"Fatal error in top-level execution: {e}")
         sys.exit(1) 
