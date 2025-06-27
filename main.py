@@ -172,7 +172,7 @@ class GreedBot:
             
             # Start the scheduler
             if self.scheduler:
-                self.scheduler.start()
+                await self.scheduler.start()
                 logger.info("Scheduler started")
             
             # Start the bot
@@ -205,7 +205,7 @@ class GreedBot:
         try:
             # Stop scheduler
             if self.scheduler:
-                self.scheduler.shutdown()
+                self.scheduler.stop()
                 logger.info("Scheduler stopped")
             
             # Stop application

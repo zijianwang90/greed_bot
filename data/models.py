@@ -25,6 +25,7 @@ class User(Base):
     is_subscribed = Column(Boolean, default=False)
     push_time = Column(String(5), default='09:00')  # HH:MM 格式
     timezone = Column(String(50), default='Asia/Shanghai')
+    last_notification_sent = Column(DateTime, nullable=True)  # 最后一次通知时间
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)

@@ -127,7 +127,7 @@ class NotificationScheduler:
         """Check if user should receive notification now"""
         try:
             # Get user's notification time
-            notification_time = user.notification_time or config.DEFAULT_NOTIFICATION_TIME
+            notification_time = user.push_time or config.DEFAULT_NOTIFICATION_TIME
             user_timezone = user.timezone or config.DEFAULT_TIMEZONE
             
             # Parse notification time
