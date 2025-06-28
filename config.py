@@ -48,6 +48,15 @@ NOTIFICATION_CHECK_INTERVAL = int(os.getenv("NOTIFICATION_CHECK_INTERVAL", "1"))
 # CNN Fear & Greed Index API
 CNN_FEAR_GREED_API = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 
+# Backup data source
+BACKUP_DATA_SOURCE = os.getenv("BACKUP_DATA_SOURCE", "https://alternative.me/crypto/fear-and-greed-index/")
+
+# Request timeout (seconds)
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
+
+# Maximum retry attempts
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
+
 # Alternative data sources (comma-separated)
 ALTERNATIVE_DATA_SOURCES = os.getenv("ALTERNATIVE_DATA_SOURCES", "").split(",")
 

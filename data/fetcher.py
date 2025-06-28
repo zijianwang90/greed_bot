@@ -327,17 +327,19 @@ class DataFetcher(FearGreedDataFetcher):
     
     async def get_current_fear_greed_index(self) -> Optional[Dict]:
         """获取当前恐慌贪婪指数 - 兼容性方法"""
-        data = await super().get_current_fear_greed_index()
-        if data:
-            # 转换数据格式以匹配 handlers.py 的预期
-            return {
-                'score': data.get('current_value', 0),
-                'rating': data.get('rating', 'Unknown'),
-                'timestamp': data.get('last_update', ''),
-                'previous_close': data.get('previous_close'),
-                'week_ago': data.get('week_ago'),
-                'month_ago': data.get('month_ago'),
-                'year_ago': data.get('year_ago'),
-                'source': data.get('source', 'Unknown')
-            }
-        return None 
+        # 使用 context manager 来管理 session
+        async with self:
+            data = await super().get_current_fear_greed_index()
+            if data:
+                # 转换数据格式以匹配 handlers.py 的预期
+                return {
+                    'score': data.get('current_value', 0),
+                    'rating': data.get('rating', 'Unknown'),
+                    'timestamp': data.get('last_update', ''),
+                    'previous_close': data.get('previous_close'),
+                    'week_ago': data.get('week_ago'),
+                    'month_ago': data.get('month_ago'),
+                    'year_ago': data.get('year_ago'),
+                    'source': data.get('source', 'Unknown')
+                }
+            return None 
