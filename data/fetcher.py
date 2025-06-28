@@ -30,8 +30,20 @@ class FearGreedDataFetcher:
         self.session = None
         
     async def __aenter__(self):
+        # 设置浏览器头部以避免反爬虫检测
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
         self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+            headers=headers
         )
         return self
     
@@ -43,13 +55,21 @@ class FearGreedDataFetcher:
         """获取当前恐慌贪婪指数"""
         try:
             # 尝试从 CNN 官方 API 获取
+            logger.info("尝试从 CNN API 获取恐慌贪婪指数...")
             data = await self._fetch_from_cnn_api()
             if data:
+                logger.info("成功从 CNN API 获取数据")
                 return data
                 
-            # 备用方案：从网页爬取
-            logger.warning("CNN API 失败，尝试备用数据源...")
-            return await self._fetch_from_backup_source()
+            # 备用方案：从 Alternative.me API 获取
+            logger.warning("CNN API 失败，尝试备用数据源 (Alternative.me)...")
+            backup_data = await self._fetch_from_backup_source()
+            if backup_data:
+                logger.info("成功从备用数据源获取数据")
+                return backup_data
+            else:
+                logger.error("所有数据源都失败了")
+                return None
             
         except Exception as e:
             logger.error(f"获取恐慌贪婪指数失败: {e}")
@@ -57,18 +77,33 @@ class FearGreedDataFetcher:
     
     async def _fetch_from_cnn_api(self) -> Optional[Dict]:
         """从 CNN API 获取数据"""
-        try:
-            async with self.session.get(CNN_FEAR_GREED_API) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_cnn_data(data)
-                else:
-                    logger.warning(f"CNN API 返回状态码: {response.status}")
+        for attempt in range(MAX_RETRIES):
+            try:
+                # 添加一些随机延迟以避免被检测为自动化请求
+                if attempt > 0:
+                    import random
+                    await asyncio.sleep(random.uniform(1, 3))
+                
+                async with self.session.get(CNN_FEAR_GREED_API) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_cnn_data(data)
+                    elif response.status == 418:
+                        logger.warning(f"CNN API 拒绝请求 (状态码 418) - 尝试 {attempt + 1}/{MAX_RETRIES}")
+                        if attempt == MAX_RETRIES - 1:
+                            logger.error("CNN API 持续返回 418 状态码，可能被反爬虫系统阻止")
+                        continue
+                    else:
+                        logger.warning(f"CNN API 返回状态码: {response.status} - 尝试 {attempt + 1}/{MAX_RETRIES}")
+                        continue
+                        
+            except Exception as e:
+                logger.error(f"从 CNN API 获取数据失败 (尝试 {attempt + 1}/{MAX_RETRIES}): {e}")
+                if attempt == MAX_RETRIES - 1:
                     return None
-                    
-        except Exception as e:
-            logger.error(f"从 CNN API 获取数据失败: {e}")
-            return None
+                continue
+        
+        return None
     
     def _parse_cnn_data(self, data: Dict) -> Dict:
         """解析 CNN API 数据"""
@@ -105,8 +140,8 @@ class FearGreedDataFetcher:
         try:
             async with self.session.get(BACKUP_DATA_SOURCE) as response:
                 if response.status == 200:
-                    html = await response.text()
-                    return self._parse_backup_data(html)
+                    data = await response.json()
+                    return self._parse_backup_data(data)
                 else:
                     logger.warning(f"备用数据源返回状态码: {response.status}")
                     return None
@@ -115,35 +150,52 @@ class FearGreedDataFetcher:
             logger.error(f"从备用数据源获取数据失败: {e}")
             return None
     
-    def _parse_backup_data(self, html: str) -> Dict:
-        """解析备用数据源的 HTML"""
+    def _parse_backup_data(self, data: Dict) -> Dict:
+        """解析备用数据源的 JSON (Alternative.me API)"""
         try:
-            soup = BeautifulSoup(html, 'html.parser')
+            # Alternative.me API 返回格式：
+            # {
+            #   "name": "Fear and Greed Index",
+            #   "data": [
+            #     {
+            #       "value": "40",
+            #       "value_classification": "Fear",
+            #       "timestamp": "1551157200",
+            #       "time_until_update": "68499"
+            #     }
+            #   ]
+            # }
             
-            # 查找当前指数值（这需要根据实际网站结构调整）
-            current_value_elem = soup.find('span', class_='fear-greed-value')
-            if not current_value_elem:
-                # 尝试其他可能的选择器
-                current_value_elem = soup.find('div', {'id': 'fear-greed-current'})
-            
-            current_value = 50  # 默认值
-            if current_value_elem:
-                value_text = current_value_elem.get_text(strip=True)
-                current_value = int(re.search(r'\d+', value_text).group())
-            
-            # 根据数值确定评级
-            rating = self._get_rating_from_value(current_value)
-            
-            return {
-                'current_value': current_value,
-                'rating': rating,
-                'last_update': datetime.now().isoformat(),
-                'previous_close': None,
-                'week_ago': None,
-                'month_ago': None,
-                'year_ago': None,
-                'source': 'Backup Source'
-            }
+            if 'data' in data and len(data['data']) > 0:
+                latest_data = data['data'][0]
+                
+                current_value = int(latest_data.get('value', 50))
+                rating = latest_data.get('value_classification', 'Unknown')
+                timestamp = latest_data.get('timestamp', '')
+                
+                # 转换时间戳
+                if timestamp:
+                    try:
+                        dt = datetime.fromtimestamp(int(timestamp))
+                        last_update = dt.isoformat()
+                    except:
+                        last_update = datetime.now().isoformat()
+                else:
+                    last_update = datetime.now().isoformat()
+                
+                return {
+                    'current_value': current_value,
+                    'rating': rating,
+                    'last_update': last_update,
+                    'previous_close': None,
+                    'week_ago': None,
+                    'month_ago': None,
+                    'year_ago': None,
+                    'source': 'Alternative.me API'
+                }
+            else:
+                logger.warning("备用数据源返回的数据格式不正确")
+                return {}
             
         except Exception as e:
             logger.error(f"解析备用数据失败: {e}")
