@@ -25,14 +25,14 @@ def validate_config():
     config_exists = check_file_exists("config.py")
     config_local_exists = check_file_exists("config_local.py")
     
-    if not config_exists:
-        print("\n💡 请运行: cp config.example.py config.py")
-        
     if not config_local_exists:
         print("\n💡 请运行: cp config_local.example.py config_local.py")
         print("💡 然后编辑 config_local.py 添加您的 Bot Token")
+        
+    if not config_exists:
+        print("\n⚠️  config.py 缺失，但这是正常的，因为它会从 config_local.py 导入设置")
     
-    if not (config_exists and config_local_exists):
+    if not config_local_exists:
         return False
     
     print("\n🔍 检查配置项...")

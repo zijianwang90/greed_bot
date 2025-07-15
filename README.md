@@ -62,7 +62,16 @@ install.bat
    cd greed_bot
    ```
 
-2. **Install dependencies**:
+2. **Setup configuration**:
+   ```bash
+   # Copy the configuration template
+   cp config_local.example.py config_local.py
+   
+   # Edit the configuration file
+   nano config_local.py
+   ```
+
+3. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
@@ -80,25 +89,15 @@ install.bat
    pip install python-telegram-bot requests aiohttp sqlalchemy apscheduler
    ```
 
-3. **Set up configuration**:
-   ```bash
-   # Copy configuration templates
-   cp config.example.py config.py
-   cp config_local.example.py config_local.py
-   
-   # Edit your personal settings (Bot Token, Database, etc.)
-   nano config_local.py
-   ```
-
 4. **Configure your Telegram Bot**:
    - Message @BotFather on Telegram
    - Create a new bot with `/newbot`
    - Get your bot token
    - Add the token to `config_local.py`
 
-5. **Validate configuration (optional)**:
+5. **Initialize the database**:
    ```bash
-   python validate_config.py
+   python migrate_db.py
    ```
 
 6. **Run the bot**:
@@ -108,53 +107,47 @@ install.bat
 
 ## Configuration 🔧
 
-This project uses a two-file configuration system:
+This project uses a clean two-file configuration system:
 
-### Personal Settings (`config_local.py`)
-Edit this file with your personal/secret configurations that don't change often:
+### 📋 Quick Setup
+See [SETUP.md](SETUP.md) for detailed setup instructions.
+
+### 🔐 Sensitive Configuration (`config_local.py`)
+Contains sensitive data and personal settings (git-ignored):
 
 ```python
-# Telegram Bot Token (required)
+# Required: Telegram Bot Token
 TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-# Database Configuration
-DATABASE_URL = "sqlite:///bot.db"  # For development
-# DATABASE_URL = "postgresql://user:pass@host:port/db"  # For production
+# Optional: Admin user ID  
+ADMIN_USER_ID = "YOUR_TELEGRAM_USER_ID"
 
-# Default notification time (24-hour format)
+# Database (SQLite for dev, PostgreSQL for production)
+DATABASE_URL = "sqlite:///bot.db"
+
+# Notification settings
 DEFAULT_NOTIFICATION_TIME = "09:00"
-
-# Timezone
 DEFAULT_TIMEZONE = "UTC"
-
-# Admin settings
-ADMIN_USER_ID = None  # Your Telegram user ID
 ```
 
-### Business Settings (`config.py`)
-This file contains business logic settings that might change during development:
+### ⚙️ Business Configuration (`config.py`)
+Contains feature toggles and business logic settings:
 
 ```python
-# Language settings
+# Language and features
 DEFAULT_LANGUAGE = "en"  # en, zh
-
-# Feature toggles
 ENABLE_HISTORICAL_DATA = True
 ENABLE_VIX_DATA = True
-ENABLE_MARKET_INDICATORS = True
 
-# Update intervals (minutes)
-DATA_UPDATE_INTERVAL = 60
-NOTIFICATION_CHECK_INTERVAL = 1
-
-# Rate limiting
-RATE_LIMIT_MAX_REQUESTS = 20
+# Update intervals
+DATA_UPDATE_INTERVAL = 60  # minutes
+NOTIFICATION_CHECK_INTERVAL = 1  # minutes
 ```
 
-### Benefits of This Structure:
-- 🔒 **Personal settings** (tokens, passwords) stay in `config_local.py` (git-ignored)
-- 🔄 **Business settings** can be updated via git without losing personal configs
-- 📦 **Easy deployment** - just copy your `config_local.py` to new deployments
+### ✅ Benefits:
+- 🔒 **Sensitive data** protected in `config_local.py` (never committed)
+- 🔄 **Business settings** can be updated via git
+- 📦 **Easy deployment** - just copy your `config_local.py`
 
 ## Bot Commands 🤖
 
