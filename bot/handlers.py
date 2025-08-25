@@ -788,23 +788,23 @@ async def timezone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             current_tz = await UserRepository.get_user_timezone(user_id) or "Asia/Shanghai"
             
             message = (
-                f"🌍 **Your Current Timezone**: {current_tz}\n\n"
-                "**To change your timezone, use:**\n"
-                "`/timezone <timezone_name>`\n\n"
-                "**Popular Timezones:**\n"
-                "• `/timezone UTC` - Coordinated Universal Time\n"
-                "• `/timezone Asia/Shanghai` - China Standard Time\n"
-                "• `/timezone America/New_York` - US Eastern Time\n"
-                "• `/timezone America/Los_Angeles` - US Pacific Time\n"
-                "• `/timezone Europe/London` - UK Time\n"
-                "• `/timezone Asia/Tokyo` - Japan Standard Time\n"
-                "• `/timezone Australia/Sydney` - Australia Eastern Time\n\n"
-                "💡 **Tip**: You can find your timezone at worldtimeapi.org"
+                f"🌍 <b>Your Current Timezone</b>: {current_tz}\n\n"
+                "<b>To change your timezone, use:</b>\n"
+                "/timezone &lt;timezone_name&gt;\n\n"
+                "<b>Popular Timezones:</b>\n"
+                "• /timezone UTC - Coordinated Universal Time\n"
+                "• /timezone Asia/Shanghai - China Standard Time\n"
+                "• /timezone America/New_York - US Eastern Time\n"
+                "• /timezone America/Los_Angeles - US Pacific Time\n"
+                "• /timezone Europe/London - UK Time\n"
+                "• /timezone Asia/Tokyo - Japan Standard Time\n"
+                "• /timezone Australia/Sydney - Australia Eastern Time\n\n"
+                "💡 <b>Tip</b>: You can find your timezone at worldtimeapi.org"
             )
             
             await update.message.reply_text(
                 message,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -819,14 +819,14 @@ async def timezone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 pytz.timezone(new_timezone)
         except Exception:
             await update.message.reply_text(
-                f"❌ Invalid timezone: `{new_timezone}`\n\n"
+                f"❌ Invalid timezone: {new_timezone}\n\n"
                 "Please use a valid timezone name like:\n"
-                "• `UTC`\n"
-                "• `Asia/Shanghai`\n"
-                "• `America/New_York`\n"
-                "• `Europe/London`\n\n"
+                "• UTC\n"
+                "• Asia/Shanghai\n"
+                "• America/New_York\n"
+                "• Europe/London\n\n"
                 "Find your timezone at worldtimeapi.org",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.HTML
             )
             return
         
@@ -839,9 +839,9 @@ async def timezone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             formatted_time = await format_timestamp(test_time, user_id)
             
             message = (
-                f"✅ **Timezone Updated Successfully!**\n\n"
-                f"🌍 **New Timezone**: {new_timezone}\n"
-                f"🕐 **Current Time**: {formatted_time}\n\n"
+                f"✅ <b>Timezone Updated Successfully!</b>\n\n"
+                f"🌍 <b>New Timezone</b>: {new_timezone}\n"
+                f"🕐 <b>Current Time</b>: {formatted_time}\n\n"
                 "Your timezone will be used for all time displays in the bot."
             )
         else:
@@ -849,7 +849,7 @@ async def timezone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         
         await update.message.reply_text(
             message,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
     except Exception as e:
