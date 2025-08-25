@@ -1477,9 +1477,9 @@ sudo systemctl status greed-bot
 - **电报群组**: [支持群组](https://t.me/greed_bot_support) (如果有)
 
 ### 📚 相关文档
-- **主要文档**: [`README.md`](README.md)
-- **缓存说明**: [`CACHE_IMPLEMENTATION.md`](CACHE_IMPLEMENTATION.md)
-- **设置指南**: [`SETUP.md`](SETUP.md)
+- **项目主页**: [`README.md`](README.md) - 完整的项目介绍和使用说明
+- **配置验证**: [`validate_config.py`](validate_config.py) - 配置文件验证工具
+- **数据库迁移**: [`migrate_db.py`](migrate_db.py) - 数据库初始化和迁移
 
 ### 🔧 获取日志帮助
 ```bash

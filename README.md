@@ -110,7 +110,22 @@ install.bat
 This project uses a clean two-file configuration system:
 
 ### 📋 Quick Setup
-See [SETUP.md](SETUP.md) for detailed setup instructions.
+
+1. **Create configuration file**:
+   ```bash
+   cp config_local.example.py config_local.py
+   nano config_local.py
+   ```
+
+2. **Get Telegram Bot Token**:
+   - Message @BotFather on Telegram
+   - Send `/newbot` command
+   - Follow prompts to set bot name and username
+   - Copy the token to `config_local.py`
+
+3. **Get your User ID** (optional but recommended):
+   - Message @userinfobot on Telegram
+   - Copy your user ID to `ADMIN_USER_ID` in `config_local.py`
 
 ### 🔐 Sensitive Configuration (`config_local.py`)
 Contains sensitive data and personal settings (git-ignored):
@@ -193,21 +208,28 @@ Market showing signs of greed with low volatility and strong momentum. Options t
 
 ```
 greed_bot/
-├── main.py                 # Bot entry point
-├── requirements.txt        # Python dependencies
-├── config.example.py      # Configuration template
-├── config.py              # Your configuration (create from example)
+├── main.py                    # Bot entry point
+├── config.py                  # Main configuration
+├── config_local.example.py    # Local config template
+├── requirements.txt           # Full Python dependencies
+├── requirements-minimal.txt   # Essential dependencies only
+├── install.sh                 # Installation script
+├── start_bot.sh              # Bot startup script
+├── validate_config.py        # Configuration validator
+├── migrate_db.py             # Database migration
+├── VPS_DEPLOYMENT_GUIDE.md   # Detailed deployment guide
 ├── bot/
 │   ├── __init__.py
-│   ├── handlers.py        # Telegram command handlers
-│   ├── utils.py           # Utility functions
-│   └── scheduler.py       # Job scheduling
-├── data/
-│   ├── __init__.py
-│   ├── fetcher.py         # Data fetching from APIs
-│   ├── models.py          # Database models
-│   └── database.py        # Database operations
-└── README.md
+│   ├── handlers.py           # Telegram command handlers
+│   ├── utils.py              # Utility functions
+│   └── scheduler.py          # Job scheduling
+└── data/
+    ├── __init__.py
+    ├── fetcher.py            # Data fetching from APIs
+    ├── mock_fetcher.py       # Mock data for testing
+    ├── cache_service.py      # Smart caching system
+    ├── models.py             # Database models
+    └── database.py           # Database operations
 ```
 
 ## Data Sources 📊
@@ -227,6 +249,7 @@ greed_bot/
 - Multiple data source fallbacks
 - Error handling and retry logic
 - Historical data validation
+- **Smart Caching**: Intelligent caching system reduces API calls and improves response time
 
 ### User Experience
 - Interactive inline keyboards
