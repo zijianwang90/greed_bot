@@ -260,3 +260,180 @@ async def update_user_settings(telegram_id: int, **kwargs) -> bool:
             await session.commit()
             return True
         return False
+
+
+class FearGreedRepository:
+    """恐慌贪婪指数数据仓库"""
+    
+    @staticmethod
+    async def save_fear_greed_data(data: FearGreedDataDTO) -> FearGreedData:
+        """保存恐慌贪婪指数数据"""
+        from sqlalchemy import select
+        async with get_db_session() as session:
+            # 检查是否已有今天的数据
+            today = datetime.utcnow().date()
+            result = await session.execute(
+                select(FearGreedData).filter(
+                    and_(
+                        FearGreedData.date >= datetime.combine(today, datetime.min.time()),
+                        FearGreedData.date < datetime.combine(today + timedelta(days=1), datetime.min.time())
+                    )
+                ).order_by(FearGreedData.created_at.desc())
+            )
+            existing = result.scalar_one_or_none()
+            
+            # 如果已有今天的数据，更新它
+            if existing:
+                existing.current_value = data.current_value
+                existing.rating = data.rating
+                existing.previous_close = data.previous_close
+                existing.week_ago = data.week_ago
+                existing.month_ago = data.month_ago
+                existing.year_ago = data.year_ago
+                existing.source = data.source
+                await session.commit()
+                await session.refresh(existing)
+                return existing
+            else:
+                # 创建新记录
+                new_data = FearGreedData(
+                    date=data.date,
+                    current_value=data.current_value,
+                    rating=data.rating,
+                    previous_close=data.previous_close,
+                    week_ago=data.week_ago,
+                    month_ago=data.month_ago,
+                    year_ago=data.year_ago,
+                    source=data.source
+                )
+                
+                session.add(new_data)
+                await session.commit()
+                await session.refresh(new_data)
+                return new_data
+    
+    @staticmethod
+    async def get_latest_fear_greed_data(max_age_minutes: int = 60) -> Optional[FearGreedData]:
+        """获取最新的恐慌贪婪指数数据（如果在指定时间内）"""
+        from sqlalchemy import select
+        async with get_db_session() as session:
+            cutoff_time = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+            
+            result = await session.execute(
+                select(FearGreedData).filter(
+                    FearGreedData.created_at >= cutoff_time
+                ).order_by(FearGreedData.created_at.desc()).limit(1)
+            )
+            
+            return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_fear_greed_history(days: int = 7) -> List[FearGreedData]:
+        """获取指定天数的历史数据"""
+        from sqlalchemy import select
+        async with get_db_session() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+            
+            result = await session.execute(
+                select(FearGreedData).filter(
+                    FearGreedData.date >= cutoff_date
+                ).order_by(FearGreedData.date.desc())
+            )
+            
+            return result.scalars().all()
+    
+    @staticmethod
+    async def cleanup_old_data(days_to_keep: int = 30) -> int:
+        """清理旧数据，保留指定天数"""
+        from sqlalchemy import delete
+        async with get_db_session() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+            
+            result = await session.execute(
+                delete(FearGreedData).filter(
+                    FearGreedData.date < cutoff_date
+                )
+            )
+            
+            await session.commit()
+            return result.rowcount
+
+
+class VixRepository:
+    """VIX数据仓库"""
+    
+    @staticmethod
+    async def save_vix_data(data: Dict) -> VixData:
+        """保存VIX数据"""
+        async with get_db_session() as session:
+            new_data = VixData(
+                date=datetime.utcnow(),
+                current_value=data.get('current_value', 0.0),
+                previous_close=data.get('previous_close'),
+                change=data.get('change'),
+                change_percent=data.get('change_percent')
+            )
+            
+            session.add(new_data)
+            await session.commit()
+            await session.refresh(new_data)
+            return new_data
+    
+    @staticmethod
+    async def get_latest_vix_data(max_age_minutes: int = 60) -> Optional[VixData]:
+        """获取最新的VIX数据"""
+        from sqlalchemy import select
+        async with get_db_session() as session:
+            cutoff_time = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+            
+            result = await session.execute(
+                select(VixData).filter(
+                    VixData.created_at >= cutoff_time
+                ).order_by(VixData.created_at.desc()).limit(1)
+            )
+            
+            return result.scalar_one_or_none()
+
+
+# 便捷函数用于缓存操作
+async def get_cached_fear_greed_data(cache_timeout_minutes: int = 30) -> Optional[Dict]:
+    """获取缓存的恐慌贪婪指数数据"""
+    try:
+        cached_data = await FearGreedRepository.get_latest_fear_greed_data(cache_timeout_minutes)
+        if cached_data:
+            return {
+                'current_value': cached_data.current_value,
+                'rating': cached_data.rating,
+                'last_update': cached_data.date.isoformat(),
+                'previous_close': cached_data.previous_close,
+                'week_ago': cached_data.week_ago,
+                'month_ago': cached_data.month_ago,
+                'year_ago': cached_data.year_ago,
+                'source': cached_data.source,
+                'cached': True,
+                'cache_time': cached_data.created_at.isoformat()
+            }
+        return None
+    except Exception as e:
+        logger.error(f"获取缓存数据失败: {e}")
+        return None
+
+
+async def save_fear_greed_data_to_cache(data: Dict) -> bool:
+    """保存恐慌贪婪指数数据到缓存"""
+    try:
+        data_dto = FearGreedDataDTO(
+            current_value=data.get('current_value', 0),
+            rating=data.get('rating', 'Unknown'),
+            previous_close=data.get('previous_close'),
+            week_ago=data.get('week_ago'),
+            month_ago=data.get('month_ago'),
+            year_ago=data.get('year_ago'),
+            source=data.get('source', 'Unknown')
+        )
+        
+        await FearGreedRepository.save_fear_greed_data(data_dto)
+        return True
+    except Exception as e:
+        logger.error(f"保存数据到缓存失败: {e}")
+        return False

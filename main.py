@@ -16,7 +16,8 @@ from data.database import init_database
 from bot.handlers import (
     start_handler, help_handler, current_handler, 
     subscribe_handler, unsubscribe_handler, settings_handler, 
-    history_handler, message_handler, button_handler, error_handler
+    history_handler, message_handler, button_handler, error_handler,
+    cache_status_handler, refresh_handler
 )
 
 # Setup logging
@@ -66,6 +67,8 @@ def main():
         app.add_handler(CommandHandler("unsubscribe", unsubscribe_handler))
         app.add_handler(CommandHandler("settings", settings_handler))
         app.add_handler(CommandHandler("history", history_handler))
+        app.add_handler(CommandHandler("cache", cache_status_handler))
+        app.add_handler(CommandHandler("refresh", refresh_handler))
         
         # Callback query handler
         app.add_handler(CallbackQueryHandler(button_handler))

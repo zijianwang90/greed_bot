@@ -64,6 +64,17 @@ DATA_UPDATE_INTERVAL = int(os.getenv("DATA_UPDATE_INTERVAL", "60"))
 # 通知检查间隔（分钟）
 NOTIFICATION_CHECK_INTERVAL = int(os.getenv("NOTIFICATION_CHECK_INTERVAL", "1"))
 
+# ==================== 缓存设置 ====================
+
+# 缓存超时时间（分钟）
+CACHE_TIMEOUT_MINUTES = int(os.getenv("CACHE_TIMEOUT_MINUTES", "30"))
+
+# 备用缓存超时时间（分钟，当API失败时使用）
+FALLBACK_CACHE_TIMEOUT_MINUTES = int(os.getenv("FALLBACK_CACHE_TIMEOUT_MINUTES", "180"))
+
+# 缓存清理周期（天）
+CACHE_CLEANUP_DAYS = int(os.getenv("CACHE_CLEANUP_DAYS", "30"))
+
 # ==================== 市场数据配置 ====================
 
 # CNN Fear & Greed Index API

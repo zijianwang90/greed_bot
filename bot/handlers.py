@@ -9,8 +9,8 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from data.database import get_user_or_create, UserRepository, is_user_subscribed
-# Use real data fetcher
-from data.fetcher import DataFetcher
+# Use cache-aware data fetcher
+from data.cache_service import get_smart_fetcher, get_data_cache_status, force_refresh_data
 
 import config
 
@@ -31,8 +31,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         db_user = await get_user_or_create(user)
         logger.info(f"User {user.id} accessed start command")
         
-        # Get current market data
-        fetcher = DataFetcher()
+        # Get current market data (using cache)
+        fetcher = get_smart_fetcher(cache_timeout_minutes=30)
         try:
             current_data = await fetcher.get_current_fear_greed_index()
         except Exception as e:
@@ -114,7 +114,7 @@ async def current_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     loading_msg = await update.message.reply_text("📊 Fetching current market sentiment...")
     
     try:
-        fetcher = DataFetcher()
+        fetcher = get_smart_fetcher(cache_timeout_minutes=30)
         current_data = await fetcher.get_current_fear_greed_index()
         
         if current_data:
@@ -122,11 +122,21 @@ async def current_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             sentiment = get_sentiment_text(index_value)
             emoji = get_sentiment_emoji(index_value)
             
+            # Add cache info to message
+            cache_info = ""
+            if current_data.get('cached'):
+                if current_data.get('is_stale'):
+                    cache_info = "\n⚠️ *Using cached data (API temporarily unavailable)*"
+                else:
+                    cache_info = "\n✅ *Data from cache (recently updated)*"
+            else:
+                cache_info = "\n🔄 *Fresh data from API*"
+            
             message = (
                 f"📊 **Current Fear & Greed Index**\n\n"
                 f"🎯 **Index**: {index_value}\n"
                 f"{emoji} **Sentiment**: {sentiment}\n\n"
-                f"📅 **Last Updated**: {current_data.get('timestamp', 'Unknown')}\n\n"
+                f"📅 **Last Updated**: {current_data.get('timestamp', 'Unknown')}{cache_info}\n\n"
                 "📈 Use /subscribe to get daily updates!"
             )
         else:
@@ -222,11 +232,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await unsubscribe_callback(query)
     elif callback_data == "help":
         await help_callback(query)
+    elif callback_data == "force_refresh":
+        await force_refresh_callback(query)
 
 async def current_callback(query):
     """Handle current button callback"""
     try:
-        fetcher = DataFetcher()
+        fetcher = get_smart_fetcher(cache_timeout_minutes=30)
         current_data = await fetcher.get_current_fear_greed_index()
         
         if current_data:
@@ -234,11 +246,18 @@ async def current_callback(query):
             sentiment = get_sentiment_text(index_value)
             emoji = get_sentiment_emoji(index_value)
             
+            # Add cache indicator for callback
+            cache_indicator = ""
+            if current_data.get('cached'):
+                cache_indicator = " 💾" if not current_data.get('is_stale') else " ⚠️"
+            else:
+                cache_indicator = " 🔄"
+            
             message = (
                 f"📊 **Current Fear & Greed Index**\n\n"
                 f"🎯 **Index**: {index_value}\n"
                 f"{emoji} **Sentiment**: {sentiment}\n\n"
-                f"📅 **Last Updated**: {current_data.get('timestamp', 'Unknown')}"
+                f"📅 **Last Updated**: {current_data.get('timestamp', 'Unknown')}{cache_indicator}"
             )
         else:
             message = "❌ Unable to fetch current data. Please try again later."
@@ -467,4 +486,136 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         response,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=reply_markup
-    ) 
+    )
+
+
+async def cache_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /cache command - show cache status (admin only)"""
+    user_id = update.effective_user.id if update.effective_user else None
+    
+    # Check if user is admin
+    if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
+        await update.message.reply_text("❌ This command is only available to administrators.")
+        return
+    
+    try:
+        cache_status = await get_data_cache_status()
+        
+        if cache_status.get('has_cache'):
+            cache_age = cache_status.get('cache_age_minutes', 0)
+            is_fresh = cache_status.get('is_fresh', False)
+            
+            status_emoji = "🟢" if is_fresh else "🟡"
+            freshness = "Fresh" if is_fresh else "Stale"
+            
+            message = (
+                f"📊 **Cache Status**\n\n"
+                f"{status_emoji} **Status**: {freshness}\n"
+                f"⏱️ **Age**: {cache_age} minutes\n"
+                f"📈 **Value**: {cache_status.get('current_value', 'N/A')}\n"
+                f"🔗 **Source**: {cache_status.get('source', 'Unknown')}\n"
+                f"🕐 **Last Update**: {cache_status.get('last_update', 'Unknown')}\n\n"
+                "Use /refresh to force refresh the cache."
+            )
+        else:
+            message = (
+                "📊 **Cache Status**\n\n"
+                "❌ **No cached data available**\n\n"
+                "Use /refresh to fetch fresh data."
+            )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Force Refresh", callback_data="force_refresh"),
+                InlineKeyboardButton("📊 Current Data", callback_data="current")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in cache_status_handler: {e}")
+        await update.message.reply_text(
+            "❌ Error retrieving cache status. Please try again later."
+        )
+
+
+async def refresh_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /refresh command - force refresh cache (admin only)"""
+    user_id = update.effective_user.id if update.effective_user else None
+    
+    # Check if user is admin
+    if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
+        await update.message.reply_text("❌ This command is only available to administrators.")
+        return
+    
+    loading_msg = await update.message.reply_text("🔄 Forcing cache refresh...")
+    
+    try:
+        fresh_data = await force_refresh_data()
+        
+        if fresh_data:
+            index_value = fresh_data.get('score', 'N/A')
+            sentiment = get_sentiment_text(index_value)
+            
+            message = (
+                f"✅ **Cache Refreshed Successfully**\n\n"
+                f"📊 **New Index**: {index_value} ({sentiment})\n"
+                f"🔗 **Source**: {fresh_data.get('source', 'Unknown')}\n"
+                f"🕐 **Updated**: {fresh_data.get('timestamp', 'Now')}"
+            )
+        else:
+            message = "❌ Failed to refresh cache. API may be temporarily unavailable."
+        
+        await loading_msg.edit_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in refresh_handler: {e}")
+        await loading_msg.edit_text(
+            "❌ Error refreshing cache. Please try again later."
+        )
+
+
+async def force_refresh_callback(query):
+    """Handle force refresh button callback (admin only)"""
+    user_id = query.from_user.id
+    
+    # Check if user is admin
+    if config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID):
+        await query.edit_message_text("❌ This action is only available to administrators.")
+        return
+    
+    try:
+        await query.edit_message_text("🔄 Forcing cache refresh...")
+        
+        fresh_data = await force_refresh_data()
+        
+        if fresh_data:
+            index_value = fresh_data.get('score', 'N/A')
+            sentiment = get_sentiment_text(index_value)
+            
+            message = (
+                f"✅ **Cache Refreshed**\n\n"
+                f"📊 **Index**: {index_value} ({sentiment})\n"
+                f"🔗 **Source**: {fresh_data.get('source', 'Unknown')}"
+            )
+        else:
+            message = "❌ Failed to refresh cache."
+        
+        await query.edit_message_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in force_refresh_callback: {e}")
+        await query.edit_message_text("❌ Error refreshing cache.") 

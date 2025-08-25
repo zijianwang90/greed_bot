@@ -13,8 +13,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram.ext import Application
 
-from data.database import get_subscribed_users, update_last_notification
-from data.fetcher import DataFetcher
+from data.database import get_subscribed_users, update_last_notification, FearGreedRepository
+from data.cache_service import get_smart_fetcher, force_refresh_data
 from bot.utils import format_fear_greed_message, get_user_language
 import config
 
@@ -26,7 +26,7 @@ class NotificationScheduler:
     def __init__(self, app: Application):
         self.app = app
         self.scheduler = AsyncIOScheduler()
-        self.data_fetcher = DataFetcher()
+        self.data_fetcher = get_smart_fetcher(cache_timeout_minutes=60)  # 1小时缓存超时
         
     async def start(self):
         """Start the scheduler"""
@@ -214,24 +214,18 @@ class NotificationScheduler:
     async def _update_market_data(self):
         """Update market data cache"""
         try:
-            logger.debug("Updating market data cache")
+            logger.info("强制刷新市场数据缓存...")
             
-            # Fetch current data to update cache
-            current_data = await self.data_fetcher.get_current_fear_greed_index()
+            # 强制刷新缓存，获取最新数据
+            current_data = await force_refresh_data()
             
             if current_data:
-                logger.debug("Market data updated successfully")
+                logger.info(f"市场数据更新成功: Index={current_data.get('score')}, Source={current_data.get('source')}")
             else:
-                logger.warning("Failed to update market data")
-                
-            # Also update VIX data if enabled
-            if config.ENABLE_VIX_DATA:
-                vix_data = await self.data_fetcher.get_vix_data()
-                if vix_data:
-                    logger.debug("VIX data updated successfully")
+                logger.warning("市场数据更新失败")
                 
         except Exception as e:
-            logger.error(f"Error updating market data: {e}")
+            logger.error(f"更新市场数据时出错: {e}")
     
     async def _health_check(self):
         """Perform health check"""
@@ -252,15 +246,15 @@ class NotificationScheduler:
     async def _cleanup_old_data(self):
         """Clean up old data and logs"""
         try:
-            logger.info("Starting data cleanup")
+            logger.info("开始清理旧数据...")
             
-            # This would clean up old data from database
-            # Implementation depends on your database schema
+            # 清理超过30天的恐慌贪婪指数数据
+            cleaned_count = await FearGreedRepository.cleanup_old_data(days_to_keep=config.CACHE_CLEANUP_DAYS)
             
-            logger.info("Data cleanup completed")
+            logger.info(f"数据清理完成: 清理了 {cleaned_count} 条旧记录")
             
         except Exception as e:
-            logger.error(f"Error during data cleanup: {e}")
+            logger.error(f"数据清理过程中出错: {e}")
     
     async def send_immediate_notification(self, user_id: int, message: str):
         """Send immediate notification to a specific user"""
