@@ -38,19 +38,28 @@ class CacheAwareFearGreedService:
         try:
             # 如果不强制刷新，先尝试从缓存获取
             if not force_refresh:
+                logger.debug(f"检查缓存，超时时间: {self.cache_timeout_minutes}分钟")
                 cached_data = await get_cached_fear_greed_data(self.cache_timeout_minutes)
                 if cached_data:
-                    logger.info(f"从缓存获取数据成功，缓存时间: {cached_data.get('cache_time')}")
+                    logger.info(f"✅ 从缓存获取数据成功，缓存时间: {cached_data.get('cache_time')}")
                     return self._format_cached_data(cached_data)
+                else:
+                    logger.info("❌ 缓存中没有有效数据")
+            else:
+                logger.info("🔄 强制刷新，跳过缓存检查")
             
             # 缓存未命中或强制刷新，从API获取新数据
-            logger.info("缓存未命中或过期，从API获取新数据...")
+            logger.info("🌐 缓存未命中或过期，从API获取新数据...")
             fresh_data = await self._fetch_fresh_data()
             
             if fresh_data:
                 # 保存到缓存
-                await save_fear_greed_data_to_cache(fresh_data)
-                logger.info("新数据已保存到缓存")
+                logger.info(f"💾 保存新数据到缓存: Index={fresh_data.get('current_value') or fresh_data.get('score')}")
+                save_success = await save_fear_greed_data_to_cache(fresh_data)
+                if save_success:
+                    logger.info("✅ 新数据已保存到缓存")
+                else:
+                    logger.warning("⚠️ 保存数据到缓存失败")
                 return self._format_api_data(fresh_data)
             
             # API失败，尝试获取稍旧的缓存数据作为备用

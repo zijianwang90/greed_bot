@@ -4,15 +4,24 @@
 """
 
 import logging
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    # Fallback for Python < 3.9
+    from datetime import timezone
+    import pytz
+    ZoneInfo = None
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from data.database import get_user_or_create, UserRepository, is_user_subscribed
+from data.database import get_user_or_create, UserRepository, is_user_subscribed, get_cached_fear_greed_data
 # Use cache-aware data fetcher
 from data.cache_service import get_smart_fetcher, get_data_cache_status, force_refresh_data
 
 import config
+import config_local
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +102,13 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/current` - Get current Fear & Greed Index\n"
         "• `/subscribe` - Subscribe to daily updates\n"
         "• `/unsubscribe` - Unsubscribe from updates\n"
+        "• `/settings` - Configure your preferences\n"
+        "• `/timezone` - Set your timezone for time displays\n"
         "• `/help` - Show this help message\n\n"
+        "**🔧 Admin Commands:**\n"
+        "• `/cache` - View cache status\n"
+        "• `/refresh` - Force refresh cache\n"
+        "• `/debug` - Debug cache issues\n\n"
         "**📈 About the Index:**\n"
         "The CNN Fear & Greed Index measures market sentiment:\n"
         "• 0-24: Extreme Fear 😨\n"
@@ -132,11 +147,15 @@ async def current_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             else:
                 cache_info = "\n🔄 *Fresh data from API*"
             
+            # Get user ID for timezone formatting
+            user_id = update.effective_user.id if update.effective_user else None
+            formatted_time = await format_timestamp(current_data.get('timestamp', 'Unknown'), user_id)
+            
             message = (
                 f"📊 **Current Fear & Greed Index**\n\n"
                 f"🎯 **Index**: {index_value}\n"
                 f"{emoji} **Sentiment**: {sentiment}\n\n"
-                f"📅 **Last Updated**: {current_data.get('timestamp', 'Unknown')}{cache_info}\n\n"
+                f"📅 **Last Updated**: {formatted_time}{cache_info}\n\n"
                 "📈 Use /subscribe to get daily updates!"
             )
         else:
@@ -253,11 +272,15 @@ async def current_callback(query):
             else:
                 cache_indicator = " 🔄"
             
+            # Get user ID for timezone formatting
+            user_id = query.from_user.id
+            formatted_time = await format_timestamp(current_data.get('timestamp', 'Unknown'), user_id)
+            
             message = (
                 f"📊 **Current Fear & Greed Index**\n\n"
                 f"🎯 **Index**: {index_value}\n"
                 f"{emoji} **Sentiment**: {sentiment}\n\n"
-                f"📅 **Last Updated**: {current_data.get('timestamp', 'Unknown')}{cache_indicator}"
+                f"📅 **Last Updated**: {formatted_time}{cache_indicator}"
             )
         else:
             message = "❌ Unable to fetch current data. Please try again later."
@@ -370,6 +393,64 @@ def get_sentiment_emoji(index_value):
     except (ValueError, TypeError):
         return "❓"
 
+async def format_timestamp(timestamp_str, user_id=None):
+    """Format timestamp string to more readable format using user's timezone or configured timezone"""
+    if not timestamp_str or timestamp_str == 'Unknown':
+        return 'Unknown'
+    
+    try:
+        # Get user's timezone if user_id is provided
+        user_timezone = None
+        if user_id:
+            try:
+                user_timezone = await UserRepository.get_user_timezone(user_id)
+            except Exception as e:
+                logger.warning(f"Could not get user timezone for {user_id}: {e}")
+        
+        # Fallback to configured timezone
+        configured_tz = user_timezone or getattr(config_local, 'DEFAULT_TIMEZONE', 'UTC')
+        
+        # Handle different timestamp formats
+        if 'T' in timestamp_str:
+            # ISO format: 2025-08-25T14:52:46+00:00
+            if '+' in timestamp_str or timestamp_str.endswith('Z'):
+                dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            else:
+                # Handle format without timezone - assume UTC
+                dt = datetime.fromisoformat(timestamp_str + '+00:00')
+        else:
+            # Try other formats - assume UTC if no timezone info
+            dt = datetime.fromisoformat(timestamp_str + '+00:00')
+        
+        # Convert to target timezone
+        if configured_tz != 'UTC':
+            try:
+                if ZoneInfo is not None:
+                    # Use zoneinfo (Python 3.9+)
+                    target_tz = ZoneInfo(configured_tz)
+                    dt_converted = dt.astimezone(target_tz)
+                    # Format with timezone abbreviation
+                    tz_name = dt_converted.strftime('%Z') or configured_tz
+                    return dt_converted.strftime(f"%b %d, %Y at %H:%M {tz_name}")
+                else:
+                    # Use pytz (Python < 3.9)
+                    target_tz = pytz.timezone(configured_tz)
+                    dt_converted = dt.astimezone(target_tz)
+                    # Format with timezone abbreviation
+                    tz_name = dt_converted.strftime('%Z') or configured_tz
+                    return dt_converted.strftime(f"%b %d, %Y at %H:%M {tz_name}")
+            except Exception as tz_error:
+                logger.warning(f"Invalid timezone '{configured_tz}': {tz_error}, falling back to UTC")
+                # Fallback to UTC
+                return dt.strftime("%b %d, %Y at %H:%M UTC")
+        else:
+            # Use UTC directly
+            return dt.strftime("%b %d, %Y at %H:%M UTC")
+            
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Could not parse timestamp '{timestamp_str}': {e}")
+        return timestamp_str
+
 async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /settings command"""
     user_id = update.effective_user.id if update.effective_user else None
@@ -377,15 +458,21 @@ async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     
     try:
-        # Check if user is subscribed
+        # Get user settings
         is_subscribed = await is_user_subscribed(user_id)
+        user_timezone = await UserRepository.get_user_timezone(user_id) or "Asia/Shanghai"
         subscription_status = "🔔 Subscribed" if is_subscribed else "❌ Not subscribed"
+        
+        # Show current time in user's timezone
+        current_time = datetime.now().isoformat() + '+00:00'
+        formatted_time = await format_timestamp(current_time, user_id)
         
         settings_msg = (
             "⚙️ **Your Current Settings:**\n\n"
             f"🔔 **Subscription:** {subscription_status}\n"
-            f"⏰ **Notification Time:** {config.DEFAULT_NOTIFICATION_TIME} UTC\n"
-            f"🌍 **Timezone:** UTC\n\n"
+            f"⏰ **Notification Time:** {config.DEFAULT_NOTIFICATION_TIME}\n"
+            f"🌍 **Timezone:** {user_timezone}\n"
+            f"🕐 **Current Time:** {formatted_time}\n\n"
             "**Available Actions:**"
         )
         
@@ -508,13 +595,17 @@ async def cache_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             status_emoji = "🟢" if is_fresh else "🟡"
             freshness = "Fresh" if is_fresh else "Stale"
             
+            # Get user ID for timezone formatting
+            user_id = update.effective_user.id if update.effective_user else None
+            formatted_time = await format_timestamp(cache_status.get('last_update', 'Unknown'), user_id)
+            
             message = (
                 f"📊 **Cache Status**\n\n"
                 f"{status_emoji} **Status**: {freshness}\n"
                 f"⏱️ **Age**: {cache_age} minutes\n"
                 f"📈 **Value**: {cache_status.get('current_value', 'N/A')}\n"
                 f"🔗 **Source**: {cache_status.get('source', 'Unknown')}\n"
-                f"🕐 **Last Update**: {cache_status.get('last_update', 'Unknown')}\n\n"
+                f"🕐 **Last Update**: {formatted_time}\n\n"
                 "Use /refresh to force refresh the cache."
             )
         else:
@@ -564,11 +655,15 @@ async def refresh_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             index_value = fresh_data.get('score', 'N/A')
             sentiment = get_sentiment_text(index_value)
             
+            # Get user ID for timezone formatting
+            user_id = update.effective_user.id if update.effective_user else None
+            formatted_time = await format_timestamp(fresh_data.get('timestamp', 'Now'), user_id)
+            
             message = (
                 f"✅ **Cache Refreshed Successfully**\n\n"
                 f"📊 **New Index**: {index_value} ({sentiment})\n"
                 f"🔗 **Source**: {fresh_data.get('source', 'Unknown')}\n"
-                f"🕐 **Updated**: {fresh_data.get('timestamp', 'Now')}"
+                f"🕐 **Updated**: {formatted_time}"
             )
         else:
             message = "❌ Failed to refresh cache. API may be temporarily unavailable."
@@ -618,4 +713,147 @@ async def force_refresh_callback(query):
         
     except Exception as e:
         logger.error(f"Error in force_refresh_callback: {e}")
-        await query.edit_message_text("❌ Error refreshing cache.") 
+        await query.edit_message_text("❌ Error refreshing cache.")
+
+
+async def debug_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /debug command - debug cache issues (admin only)"""
+    user_id = update.effective_user.id if update.effective_user else None
+    
+    # Check if user is admin
+    if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
+        await update.message.reply_text("❌ This command is only available to administrators.")
+        return
+    
+    try:
+        from data.database import FearGreedRepository
+        
+        # Check raw database records
+        all_records = await FearGreedRepository.get_fear_greed_history(days=1)
+        
+        debug_msg = "🔍 **Cache Debug Info**\n\n"
+        
+        if all_records:
+            debug_msg += f"📊 **Database Records (last 24h)**: {len(all_records)}\n\n"
+            for i, record in enumerate(all_records[:3]):  # Show max 3 records
+                age_minutes = (datetime.utcnow() - record.created_at).total_seconds() / 60
+                debug_msg += (
+                    f"**Record {i+1}:**\n"
+                    f"• ID: {record.id}\n"
+                    f"• Value: {record.current_value}\n"
+                    f"• Created: {record.created_at}\n"
+                    f"• Age: {age_minutes:.1f}min\n\n"
+                )
+        else:
+            debug_msg += "❌ **No database records found**\n\n"
+        
+        # Test cache retrieval directly
+        cached_data = await get_cached_fear_greed_data(cache_timeout_minutes=30)
+        if cached_data:
+            debug_msg += f"✅ **Cache Test**: Found data (Age: {cached_data.get('cache_time')})\n"
+        else:
+            debug_msg += "❌ **Cache Test**: No valid cache data\n"
+        
+        # Test with different timeout
+        cached_data_long = await get_cached_fear_greed_data(cache_timeout_minutes=1440)
+        if cached_data_long:
+            debug_msg += f"✅ **Cache Test (24h)**: Found data\n"
+        else:
+            debug_msg += "❌ **Cache Test (24h)**: No data\n"
+        
+        await update.message.reply_text(
+            debug_msg,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in debug_handler: {e}")
+        await update.message.reply_text(
+            f"❌ Debug error: {str(e)}"
+        )
+
+
+async def timezone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /timezone command - allow users to set their timezone"""
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        return
+    
+    try:
+        # Check if user provided a timezone argument
+        args = context.args
+        
+        if not args:
+            # Show current timezone and available options
+            current_tz = await UserRepository.get_user_timezone(user_id) or "Asia/Shanghai"
+            
+            message = (
+                f"🌍 **Your Current Timezone**: {current_tz}\n\n"
+                "**To change your timezone, use:**\n"
+                "`/timezone <timezone_name>`\n\n"
+                "**Popular Timezones:**\n"
+                "• `/timezone UTC` - Coordinated Universal Time\n"
+                "• `/timezone Asia/Shanghai` - China Standard Time\n"
+                "• `/timezone America/New_York` - US Eastern Time\n"
+                "• `/timezone America/Los_Angeles` - US Pacific Time\n"
+                "• `/timezone Europe/London` - UK Time\n"
+                "• `/timezone Asia/Tokyo` - Japan Standard Time\n"
+                "• `/timezone Australia/Sydney` - Australia Eastern Time\n\n"
+                "💡 **Tip**: You can find your timezone at worldtimeapi.org"
+            )
+            
+            await update.message.reply_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+        
+        # Validate and set the new timezone
+        new_timezone = args[0]
+        
+        # Test if timezone is valid
+        try:
+            if ZoneInfo is not None:
+                ZoneInfo(new_timezone)
+            else:
+                pytz.timezone(new_timezone)
+        except Exception:
+            await update.message.reply_text(
+                f"❌ Invalid timezone: `{new_timezone}`\n\n"
+                "Please use a valid timezone name like:\n"
+                "• `UTC`\n"
+                "• `Asia/Shanghai`\n"
+                "• `America/New_York`\n"
+                "• `Europe/London`\n\n"
+                "Find your timezone at worldtimeapi.org",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+        
+        # Update user's timezone
+        success = await UserRepository.update_user_timezone(user_id, new_timezone)
+        
+        if success:
+            # Test the new timezone with current time
+            test_time = datetime.now().isoformat() + '+00:00'
+            formatted_time = await format_timestamp(test_time, user_id)
+            
+            message = (
+                f"✅ **Timezone Updated Successfully!**\n\n"
+                f"🌍 **New Timezone**: {new_timezone}\n"
+                f"🕐 **Current Time**: {formatted_time}\n\n"
+                "Your timezone will be used for all time displays in the bot."
+            )
+        else:
+            message = "❌ Failed to update timezone. Please try again later."
+        
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in timezone_handler: {e}")
+        await update.message.reply_text(
+            "❌ Error updating timezone. Please try again later."
+        ) 

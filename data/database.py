@@ -172,6 +172,33 @@ class UserRepository:
                 await session.commit()
                 return True
             return False
+
+    @staticmethod
+    async def get_user_timezone(telegram_id: int) -> Optional[str]:
+        """获取用户时区设置"""
+        from sqlalchemy import select
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User.timezone).filter(User.telegram_id == telegram_id)
+            )
+            timezone = result.scalar_one_or_none()
+            return timezone
+
+    @staticmethod
+    async def update_user_timezone(telegram_id: int, timezone: str) -> bool:
+        """更新用户时区设置"""
+        from sqlalchemy import select
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(User).filter(User.telegram_id == telegram_id)
+            )
+            user = result.scalar_one_or_none()
+            if user:
+                user.timezone = timezone
+                user.updated_at = datetime.utcnow()
+                await session.commit()
+                return True
+            return False
     
     @staticmethod
     async def get_subscribed_users() -> List[User]:
@@ -317,15 +344,36 @@ class FearGreedRepository:
         """获取最新的恐慌贪婪指数数据（如果在指定时间内）"""
         from sqlalchemy import select
         async with get_db_session() as session:
-            cutoff_time = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+            current_time = datetime.utcnow()
+            cutoff_time = current_time - timedelta(minutes=max_age_minutes)
             
+            logger.debug(f"🕐 当前时间: {current_time}")
+            logger.debug(f"🕐 截止时间: {cutoff_time} (最大年龄: {max_age_minutes}分钟)")
+            
+            # 首先查看是否有任何记录
+            total_count = await session.execute(select(FearGreedData))
+            all_records = total_count.scalars().all()
+            logger.debug(f"📊 数据库中总记录数: {len(all_records)}")
+            
+            if all_records:
+                latest_record = max(all_records, key=lambda x: x.created_at)
+                age_minutes = (current_time - latest_record.created_at).total_seconds() / 60
+                logger.debug(f"📊 最新记录: ID={latest_record.id}, 创建时间={latest_record.created_at}, 年龄={age_minutes:.1f}分钟")
+            
+            # 按照原始逻辑查询
             result = await session.execute(
                 select(FearGreedData).filter(
                     FearGreedData.created_at >= cutoff_time
                 ).order_by(FearGreedData.created_at.desc()).limit(1)
             )
             
-            return result.scalar_one_or_none()
+            found_record = result.scalar_one_or_none()
+            if found_record:
+                logger.debug(f"✅ 找到符合条件的记录: ID={found_record.id}")
+            else:
+                logger.debug(f"❌ 没有找到{max_age_minutes}分钟内的记录")
+            
+            return found_record
     
     @staticmethod
     async def get_fear_greed_history(days: int = 7) -> List[FearGreedData]:
@@ -399,8 +447,11 @@ class VixRepository:
 async def get_cached_fear_greed_data(cache_timeout_minutes: int = 30) -> Optional[Dict]:
     """获取缓存的恐慌贪婪指数数据"""
     try:
+        logger.debug(f"🔍 查询缓存数据，超时: {cache_timeout_minutes}分钟")
         cached_data = await FearGreedRepository.get_latest_fear_greed_data(cache_timeout_minutes)
         if cached_data:
+            cache_age_minutes = (datetime.utcnow() - cached_data.created_at).total_seconds() / 60
+            logger.info(f"📊 找到缓存数据: Index={cached_data.current_value}, 年龄={cache_age_minutes:.1f}分钟")
             return {
                 'current_value': cached_data.current_value,
                 'rating': cached_data.rating,
@@ -413,7 +464,9 @@ async def get_cached_fear_greed_data(cache_timeout_minutes: int = 30) -> Optiona
                 'cached': True,
                 'cache_time': cached_data.created_at.isoformat()
             }
-        return None
+        else:
+            logger.info(f"❌ 没有找到{cache_timeout_minutes}分钟内的缓存数据")
+            return None
     except Exception as e:
         logger.error(f"获取缓存数据失败: {e}")
         return None
@@ -422,8 +475,11 @@ async def get_cached_fear_greed_data(cache_timeout_minutes: int = 30) -> Optiona
 async def save_fear_greed_data_to_cache(data: Dict) -> bool:
     """保存恐慌贪婪指数数据到缓存"""
     try:
+        # 兼容不同的数据格式 - API格式用score，内部格式用current_value
+        current_value = data.get('current_value') or data.get('score', 0)
+        
         data_dto = FearGreedDataDTO(
-            current_value=data.get('current_value', 0),
+            current_value=int(current_value) if current_value else 0,
             rating=data.get('rating', 'Unknown'),
             previous_close=data.get('previous_close'),
             week_ago=data.get('week_ago'),
@@ -432,7 +488,8 @@ async def save_fear_greed_data_to_cache(data: Dict) -> bool:
             source=data.get('source', 'Unknown')
         )
         
-        await FearGreedRepository.save_fear_greed_data(data_dto)
+        saved_data = await FearGreedRepository.save_fear_greed_data(data_dto)
+        logger.info(f"数据已保存到缓存: Index={saved_data.current_value}, Rating={saved_data.rating}")
         return True
     except Exception as e:
         logger.error(f"保存数据到缓存失败: {e}")

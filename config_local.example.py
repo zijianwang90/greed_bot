@@ -41,6 +41,12 @@ DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "20"))
 DEFAULT_NOTIFICATION_TIME = os.getenv("DEFAULT_NOTIFICATION_TIME", "09:00")
 
 # 默认时区
+# 常用时区示例（方便快速修改）:
+#   - UTC: 世界标准时间（默认）
+#   - Asia/Shanghai: 中国标准时间（东八区）
+#   - America/New_York: 美东时间（EST/EDT）
+#   - America/Los_Angeles: 美西时间（PST/PDT）
+#   - Europe/London: 伦敦时间
 DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
 # ==================== WEBHOOK 设置（可选）====================
