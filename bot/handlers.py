@@ -188,9 +188,12 @@ async def subscribe_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         success = await UserRepository.update_user_subscription(user_id, True)
         
         if success:
+            # Format notification time in user's timezone
+            formatted_notification_time = await format_notification_time(config.DEFAULT_NOTIFICATION_TIME, user_id)
+            
             message = (
                 "🔔 **Successfully subscribed to daily updates!**\n\n"
-                f"📅 You'll receive daily Fear & Greed Index updates at {config.DEFAULT_NOTIFICATION_TIME} UTC\n\n"
+                f"📅 You'll receive daily Fear & Greed Index updates at {formatted_notification_time}\n\n"
                 "❌ Use /unsubscribe to stop receiving updates"
             )
         else:
@@ -451,6 +454,52 @@ async def format_timestamp(timestamp_str, user_id=None):
         logger.warning(f"Could not parse timestamp '{timestamp_str}': {e}")
         return timestamp_str
 
+async def format_notification_time(utc_time_str, user_id=None):
+    """Format notification time string to user's timezone"""
+    try:
+        # Get user's timezone if user_id is provided
+        user_timezone = None
+        if user_id:
+            try:
+                user_timezone = await UserRepository.get_user_timezone(user_id)
+            except Exception as e:
+                logger.warning(f"Could not get user timezone for {user_id}: {e}")
+        
+        # Fallback to configured timezone
+        configured_tz = user_timezone or getattr(config_local, 'DEFAULT_TIMEZONE', 'UTC')
+        
+        # Parse UTC time (format: HH:MM)
+        hour, minute = map(int, utc_time_str.split(':'))
+        
+        # Create a datetime object for today at the specified UTC time
+        from datetime import timezone as tz
+        utc_dt = datetime.now(tz.utc).replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        # Convert to user's timezone
+        if configured_tz != 'UTC':
+            try:
+                if ZoneInfo is not None:
+                    # Use zoneinfo (Python 3.9+)
+                    target_tz = ZoneInfo(configured_tz)
+                    local_dt = utc_dt.astimezone(target_tz)
+                    tz_name = local_dt.strftime('%Z') or configured_tz
+                    return f"{local_dt.strftime('%H:%M')} {tz_name}"
+                else:
+                    # Use pytz (Python < 3.9)
+                    target_tz = pytz.timezone(configured_tz)
+                    local_dt = utc_dt.astimezone(target_tz)
+                    tz_name = local_dt.strftime('%Z') or configured_tz
+                    return f"{local_dt.strftime('%H:%M')} {tz_name}"
+            except Exception as tz_error:
+                logger.warning(f"Invalid timezone '{configured_tz}': {tz_error}, falling back to UTC")
+                return f"{utc_time_str} UTC"
+        else:
+            return f"{utc_time_str} UTC"
+            
+    except Exception as e:
+        logger.warning(f"Could not format notification time '{utc_time_str}': {e}")
+        return f"{utc_time_str} UTC"
+
 async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /settings command"""
     user_id = update.effective_user.id if update.effective_user else None
@@ -467,10 +516,13 @@ async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         current_time = datetime.now().isoformat() + '+00:00'
         formatted_time = await format_timestamp(current_time, user_id)
         
+        # Format notification time in user's timezone
+        formatted_notification_time = await format_notification_time(config.DEFAULT_NOTIFICATION_TIME, user_id)
+        
         settings_msg = (
             "⚙️ **Your Current Settings:**\n\n"
             f"🔔 **Subscription:** {subscription_status}\n"
-            f"⏰ **Notification Time:** {config.DEFAULT_NOTIFICATION_TIME}\n"
+            f"⏰ **Notification Time:** {formatted_notification_time}\n"
             f"🌍 **Timezone:** {user_timezone}\n"
             f"🕐 **Current Time:** {formatted_time}\n\n"
             "**Available Actions:**"
@@ -605,7 +657,7 @@ async def cache_status_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"⏱️ **Age**: {cache_age} minutes\n"
                 f"📈 **Value**: {cache_status.get('current_value', 'N/A')}\n"
                 f"🔗 **Source**: {cache_status.get('source', 'Unknown')}\n"
-                f"🕐 **Last Update**: {formatted_time}\n\n"
+                f"🕐 **Last Updated**: {formatted_time}\n\n"
                 "Use /refresh to force refresh the cache."
             )
         else:

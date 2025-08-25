@@ -131,7 +131,8 @@ class CacheAwareFearGreedService:
                     'has_cache': True,
                     'cache_age_minutes': int(cache_age_minutes),
                     'is_fresh': cache_age_minutes <= self.cache_timeout_minutes,
-                    'last_update': cached_data.get('cache_time'),
+                    'last_update': cached_data.get('last_update'),  # 使用数据的实际更新时间，而不是缓存时间
+                    'cache_time': cached_data.get('cache_time'),  # 保留缓存时间用于内部计算
                     'current_value': cached_data.get('current_value'),
                     'source': cached_data.get('source')
                 }
