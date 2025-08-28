@@ -71,8 +71,12 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Create inline keyboard
         keyboard = [
             [
-                InlineKeyboardButton("📊 Current Index", callback_data="current"),
-                InlineKeyboardButton("📈 History", callback_data="history_7")
+                InlineKeyboardButton("📊 Fear & Greed", callback_data="current"),
+                InlineKeyboardButton("📈 VIX Index", callback_data="vix_current")
+            ],
+            [
+                InlineKeyboardButton("📊 History", callback_data="history_7"),
+                InlineKeyboardButton("📈 VIX History", callback_data="vix_history_7")
             ],
             [
                 InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe"),
@@ -102,7 +106,9 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "**📊 Commands:**\n"
         "• `/start` - Start the bot and see welcome message\n"
         "• `/current` - Get current Fear & Greed Index\n"
-        "• `/history [days]` - View historical data (default: 7 days)\n"
+        "• `/vix` - Get current VIX volatility index\n"
+        "• `/history [days]` - View Fear & Greed historical data\n"
+        "• `/vix_history [days]` - View VIX historical data\n"
         "• `/subscribe` - Subscribe to daily updates\n"
         "• `/unsubscribe` - Unsubscribe from updates\n"
         "• `/settings` - Configure your preferences\n"
@@ -114,13 +120,19 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• `/debug` - Debug cache issues\n"
         "• `/test_notification [user_id]` - Send test notification\n"
         "• `/notification_status` - Check notification status\n\n"
-        "**📈 About the Index:**\n"
-        "The CNN Fear & Greed Index measures market sentiment:\n"
+        "**📈 About the Indices:**\n\n"
+        "**Fear & Greed Index:**\n"
         "• 0-24: Extreme Fear 😨\n"
         "• 25-49: Fear 😟\n"
         "• 50: Neutral 😐\n"
         "• 51-74: Greed 😃\n"
         "• 75-100: Extreme Greed 🤑\n\n"
+        "**VIX Index (Volatility):**\n"
+        "• < 15: Very Low Volatility 🟢\n"
+        "• 15-20: Normal Volatility 🟡\n"
+        "• 20-30: High Volatility 🟠\n"
+        "• 30-40: Very High Volatility 🔴\n"
+        "• > 40: Extreme Volatility 🔥\n\n"
         "⚠️ **Disclaimer:** This information is for educational purposes only."
     )
     
@@ -248,9 +260,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Handle inline keyboard button presses"""
     query = update.callback_query
     await query.answer()
-    
+
     callback_data = query.data
-    
+
     if callback_data == "current":
         await current_callback(query)
     elif callback_data == "subscribe":
@@ -265,6 +277,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await history_callback(query, callback_data)
     elif callback_data == "refresh":
         await refresh_callback(query)
+    elif callback_data == "vix_current":
+        await vix_callback(query)
+    elif callback_data.startswith("vix_history_"):
+        await vix_history_callback(query, callback_data)
 
 async def current_callback(query):
     """Handle current button callback"""
@@ -567,7 +583,7 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not user_id:
         return
     
-    loading_msg = await update.message.reply_text("📈 正在获取历史数据...")
+    loading_msg = await update.message.reply_text("📈 Fetching historical data...")
     
     try:
         # 获取用户信息，用于时区设置
@@ -592,15 +608,15 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         if not historical_records:
             message = (
-                "📈 **历史数据**\n\n"
-                "❌ 暂无历史数据可用\n\n"
-                "请先使用 /current 获取当前数据，系统会开始收集历史记录。"
+                "📈 Historical Data\n\n"
+                "❌ No historical data available\n\n"
+                "Please use /current first to get current data, and the system will start collecting historical records."
             )
             
             keyboard = [
                 [
-                    InlineKeyboardButton("📊 当前指数", callback_data="current"),
-                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                    InlineKeyboardButton("📊 Current Index", callback_data="current"),
+                    InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe")
                 ]
             ]
             
@@ -613,7 +629,7 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
             return
         
-        # 格式化历史数据 (临时使用简化版本避免Markdown错误)
+        # Format historical data (temporarily using simplified version to avoid Markdown errors)
         from bot.utils import format_simple_history
         message = format_simple_history(
             historical_records, 
@@ -621,15 +637,15 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             user_timezone=user_timezone
         )
         
-        # 创建交互按钮
+        # Create interactive buttons
         keyboard = [
             [
-                InlineKeyboardButton("📊 7天", callback_data="history_7"),
-                InlineKeyboardButton("📊 30天", callback_data="history_30")
+                InlineKeyboardButton("📊 7 Days", callback_data="history_7"),
+                InlineKeyboardButton("📊 30 Days", callback_data="history_30")
             ],
             [
-                InlineKeyboardButton("📈 当前指数", callback_data="current"),
-                InlineKeyboardButton("🔄 刷新", callback_data="refresh")
+                InlineKeyboardButton("📈 Current Index", callback_data="current"),
+                InlineKeyboardButton("🔄 Refresh", callback_data="refresh")
             ]
         ]
         
@@ -643,7 +659,7 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.error(f"Error in history_handler: {e}")
         await loading_msg.edit_text(
-            "❌ 获取历史数据时出错，请稍后重试。"
+            "❌ Error fetching historical data. Please try again later."
         )
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -831,7 +847,7 @@ async def history_callback(query, callback_data: str):
         else:
             days = 7
         
-        await query.edit_message_text("📈 正在获取历史数据...")
+        await query.edit_message_text("📈 Fetching historical data...")
         
         # 获取用户信息
         user_id = query.from_user.id
@@ -845,15 +861,15 @@ async def history_callback(query, callback_data: str):
         
         if not historical_records:
             message = (
-                "📈 **历史数据**\n\n"
-                "❌ 暂无历史数据可用\n\n"
-                "请先使用 /current 获取当前数据，系统会开始收集历史记录。"
+                "📈 Historical Data\n\n"
+                "❌ No historical data available\n\n"
+                "Please use /current first to get current data, and the system will start collecting historical records."
             )
             
             keyboard = [
                 [
-                    InlineKeyboardButton("📊 当前指数", callback_data="current"),
-                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                    InlineKeyboardButton("📊 Current Index", callback_data="current"),
+                    InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe")
                 ]
             ]
             
@@ -866,7 +882,7 @@ async def history_callback(query, callback_data: str):
             )
             return
         
-        # 格式化历史数据 (临时使用简化版本避免Markdown错误)
+        # Format historical data (temporarily using simplified version to avoid Markdown errors)
         from bot.utils import format_simple_history
         message = format_simple_history(
             historical_records, 
@@ -874,15 +890,15 @@ async def history_callback(query, callback_data: str):
             user_timezone=user_timezone
         )
         
-        # 创建交互按钮
+        # Create interactive buttons
         keyboard = [
             [
-                InlineKeyboardButton("📊 7天", callback_data="history_7"),
-                InlineKeyboardButton("📊 30天", callback_data="history_30")
+                InlineKeyboardButton("📊 7 Days", callback_data="history_7"),
+                InlineKeyboardButton("📊 30 Days", callback_data="history_30")
             ],
             [
-                InlineKeyboardButton("📈 当前指数", callback_data="current"),
-                InlineKeyboardButton("🔄 刷新", callback_data="refresh")
+                InlineKeyboardButton("📈 Current Index", callback_data="current"),
+                InlineKeyboardButton("🔄 Refresh", callback_data="refresh")
             ]
         ]
         
@@ -895,7 +911,7 @@ async def history_callback(query, callback_data: str):
         
     except Exception as e:
         logger.error(f"Error in history_callback: {e}")
-        await query.edit_message_text("❌ 获取历史数据时出错，请稍后重试。")
+        await query.edit_message_text("❌ Error fetching historical data. Please try again later.")
 
 async def refresh_callback(query):
     """Handle refresh button callback"""
@@ -945,23 +961,194 @@ async def refresh_callback(query):
         await query.edit_message_text("❌ 刷新数据时出错。")
 
 
+async def vix_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /vix command - get current VIX index data"""
+    loading_msg = await update.message.reply_text("📊 获取VIX波动率指数数据...")
+
+    try:
+        # Import VIX data fetcher
+        from data.fetcher import FearGreedDataFetcher
+        from bot.utils import format_vix_message
+
+        # Get user ID for timezone formatting
+        user_id = update.effective_user.id if update.effective_user else None
+
+        # Fetch VIX data
+        async with FearGreedDataFetcher() as fetcher:
+            vix_data = await fetcher.get_vix_data()
+
+        if vix_data:
+            # Format and send VIX message
+            message = await format_vix_message(vix_data, user_id)
+
+            # Create keyboard with additional options
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 当前指数", callback_data="current"),
+                    InlineKeyboardButton("📈 VIX历史", callback_data="vix_history_7")
+                ],
+                [
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe"),
+                    InlineKeyboardButton("❓ 帮助", callback_data="help")
+                ]
+            ]
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await loading_msg.edit_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+        else:
+            # Try to get cached VIX data
+            from data.database import VixRepository
+            cached_vix = await VixRepository.get_latest_vix_data(max_age_minutes=1440)  # 24 hours
+
+            if cached_vix:
+                # Format cached data with warning
+                message = await format_vix_message({
+                    'current_value': cached_vix.current_value,
+                    'previous_close': cached_vix.previous_close,
+                    'change': cached_vix.change,
+                    'change_percent': cached_vix.change_percent,
+                    'last_update': cached_vix.date.isoformat(),
+                    'cached': True,
+                    'is_stale': True
+                }, user_id)
+
+                await loading_msg.edit_text(
+                    message,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                await loading_msg.edit_text(
+                    "❌ 无法获取VIX数据，请稍后重试。\n\n"
+                    "💡 VIX（芝加哥期权交易所波动率指数）反映市场对未来30天波动率的预期。",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+
+    except Exception as e:
+        logger.error(f"Error in vix_handler: {e}")
+        await loading_msg.edit_text(
+            "❌ 获取VIX数据时出错，请稍后重试。"
+        )
+
+async def vix_history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /vix_history command - get VIX historical data"""
+    user_id = update.effective_user.id if update.effective_user else None
+    if not user_id:
+        return
+
+    loading_msg = await update.message.reply_text("📈 获取VIX历史数据...")
+
+    try:
+        # Parse arguments
+        args = context.args
+        days = 7  # default 7 days
+
+        if args and len(args) > 0:
+            try:
+                days = int(args[0])
+                if days <= 0 or days > 365:
+                    days = 7
+            except ValueError:
+                days = 7
+
+        # Get user timezone
+        user = await get_user_or_create(update.effective_user)
+        user_timezone = user.timezone if user else "UTC"
+
+        # Get VIX historical data from database
+        from data.database import VixRepository
+        from data.models import VixData
+        from datetime import timedelta
+        from sqlalchemy import select, and_
+
+        async with get_db_session() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+            result = await session.execute(
+                select(VixData).filter(
+                    and_(
+                        VixData.date >= cutoff_date,
+                        VixData.date <= datetime.utcnow()
+                    )
+                ).order_by(VixData.date.desc())
+            )
+
+            historical_records = result.scalars().all()
+
+        if not historical_records:
+            message = (
+                f"📊 VIX历史数据\n\n"
+                f"❌ 未找到最近{days}天的VIX数据\n\n"
+                f"请先使用 /vix 获取当前数据，系统将开始收集历史记录。"
+            )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 获取VIX", callback_data="vix_current"),
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                ]
+            ]
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await loading_msg.edit_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+            return
+
+        # Format historical data
+        from bot.utils import format_vix_history_message
+        message = format_vix_history_message(historical_records, days, user_timezone)
+
+        # Create interactive buttons
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 7天", callback_data="vix_history_7"),
+                InlineKeyboardButton("📊 30天", callback_data="vix_history_30")
+            ],
+            [
+                InlineKeyboardButton("📈 当前VIX", callback_data="vix_current"),
+                InlineKeyboardButton("🔄 刷新", callback_data="refresh")
+            ]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await loading_msg.edit_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+
+    except Exception as e:
+        logger.error(f"Error in vix_history_handler: {e}")
+        await loading_msg.edit_text(
+            "❌ 获取VIX历史数据时出错，请稍后重试。"
+        )
+
 async def debug_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /debug command - debug cache issues (admin only)"""
     user_id = update.effective_user.id if update.effective_user else None
-    
+
     # Check if user is admin
     if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
         await update.message.reply_text("❌ This command is only available to administrators.")
         return
-    
+
     try:
         from data.database import FearGreedRepository
-        
+
         # Check raw database records
         all_records = await FearGreedRepository.get_fear_greed_history(days=1)
-        
+
         debug_msg = "🔍 **Cache Debug Info**\n\n"
-        
+
         if all_records:
             debug_msg += f"📊 **Database Records (last 24h)**: {len(all_records)}\n\n"
             for i, record in enumerate(all_records[:3]):  # Show max 3 records
@@ -975,26 +1162,26 @@ async def debug_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 )
         else:
             debug_msg += "❌ **No database records found**\n\n"
-        
+
         # Test cache retrieval directly
         cached_data = await get_cached_fear_greed_data(cache_timeout_minutes=30)
         if cached_data:
             debug_msg += f"✅ **Cache Test**: Found data (Age: {cached_data.get('cache_time')})\n"
         else:
             debug_msg += "❌ **Cache Test**: No valid cache data\n"
-        
+
         # Test with different timeout
         cached_data_long = await get_cached_fear_greed_data(cache_timeout_minutes=1440)
         if cached_data_long:
             debug_msg += f"✅ **Cache Test (24h)**: Found data\n"
         else:
             debug_msg += "❌ **Cache Test (24h)**: No data\n"
-        
+
         await update.message.reply_text(
             debug_msg,
             parse_mode=ParseMode.MARKDOWN
         )
-        
+
     except Exception as e:
         logger.error(f"Error in debug_handler: {e}")
         await update.message.reply_text(
@@ -1129,18 +1316,18 @@ async def test_notification_handler(update: Update, context: ContextTypes.DEFAUL
 async def notification_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /notification_status command - show notification status (admin only)"""
     user_id = update.effective_user.id if update.effective_user else None
-    
+
     # Check if user is admin
     if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
         await update.message.reply_text("❌ This command is only available to administrators.")
         return
-    
+
     try:
         loading_msg = await update.message.reply_text("🔄 Checking notification status...")
-        
+
         from bot.scheduler import check_notification_status
         status = await check_notification_status()
-        
+
         if "error" in status:
             message = f"❌ Error checking status: {status['error']}"
         else:
@@ -1152,7 +1339,7 @@ async def notification_status_handler(update: Update, context: ContextTypes.DEFA
                 f"👥 <b>Subscribed Users</b>: {status['subscribed_users_count']}\n"
                 f"🔔 <b>Ready for Notification</b>: {status['users_ready_for_notification']}\n\n"
             )
-            
+
             if status['user_details']:
                 message += "<b>User Details:</b>\n"
                 for user_info in status['user_details'][:5]:  # Show first 5 users
@@ -1161,20 +1348,181 @@ async def notification_status_handler(update: Update, context: ContextTypes.DEFA
                     user_id = str(user_info['user_id'])
                     push_time = str(user_info['push_time'] or 'N/A')
                     timezone_str = str(user_info['timezone'] or 'N/A')
-                    
+
                     message += (
                         f"{should_notify} User {user_id}: "
                         f"{push_time} {timezone_str}\n"
                     )
-                
+
                 if len(status['user_details']) > 5:
                     message += f"... and {len(status['user_details']) - 5} more users\n"
-        
+
         await loading_msg.edit_text(
             message,
             parse_mode=ParseMode.HTML
         )
-        
+
     except Exception as e:
         logger.error(f"Error in notification_status_handler: {e}")
-        await update.message.reply_text(f"❌ Error checking notification status: {str(e)}") 
+        await update.message.reply_text(f"❌ Error checking notification status: {str(e)}")
+
+async def vix_callback(query):
+    """Handle VIX current button callback"""
+    try:
+        await query.edit_message_text("📊 获取VIX波动率指数数据...")
+
+        # Import VIX data fetcher
+        from data.fetcher import FearGreedDataFetcher
+        from bot.utils import format_vix_message
+
+        # Get user ID for timezone formatting
+        user_id = query.from_user.id
+
+        # Fetch VIX data
+        async with FearGreedDataFetcher() as fetcher:
+            vix_data = await fetcher.get_vix_data()
+
+        if vix_data:
+            # Format and send VIX message
+            message = await format_vix_message(vix_data, user_id)
+
+            # Create keyboard with additional options
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 当前指数", callback_data="current"),
+                    InlineKeyboardButton("📈 VIX历史", callback_data="vix_history_7")
+                ],
+                [
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe"),
+                    InlineKeyboardButton("❓ 帮助", callback_data="help")
+                ]
+            ]
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.edit_message_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+        else:
+            # Try to get cached VIX data
+            from data.database import VixRepository
+            cached_vix = await VixRepository.get_latest_vix_data(max_age_minutes=1440)
+
+            if cached_vix:
+                # Format cached data with warning
+                message = await format_vix_message({
+                    'current_value': cached_vix.current_value,
+                    'previous_close': cached_vix.previous_close,
+                    'change': cached_vix.change,
+                    'change_percent': cached_vix.change_percent,
+                    'last_update': cached_vix.date.isoformat(),
+                    'cached': True,
+                    'is_stale': True
+                }, user_id)
+
+                await query.edit_message_text(
+                    message,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                await query.edit_message_text(
+                    "❌ 无法获取VIX数据，请稍后重试。\n\n"
+                    "💡 VIX（芝加哥期权交易所波动率指数）反映市场对未来30天波动率的预期。",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+
+    except Exception as e:
+        logger.error(f"Error in vix_callback: {e}")
+        await query.edit_message_text("❌ 获取VIX数据时出错。")
+
+async def vix_history_callback(query, callback_data: str):
+    """Handle VIX history button callbacks"""
+    try:
+        # Extract days parameter
+        if callback_data == "vix_history_7":
+            days = 7
+        elif callback_data == "vix_history_30":
+            days = 30
+        else:
+            days = 7
+
+        await query.edit_message_text("📈 获取VIX历史数据...")
+
+        # Get user timezone
+        user_id = query.from_user.id
+        from data.database import get_user
+        user = await get_user(user_id)
+        user_timezone = user.timezone if user else "UTC"
+
+        # Get VIX historical data from database
+        from data.database import VixRepository
+        from data.models import VixData
+        from datetime import timedelta
+        from sqlalchemy import select, and_
+
+        async with get_db_session() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+            result = await session.execute(
+                select(VixData).filter(
+                    and_(
+                        VixData.date >= cutoff_date,
+                        VixData.date <= datetime.utcnow()
+                    )
+                ).order_by(VixData.date.desc())
+            )
+
+            historical_records = result.scalars().all()
+
+        if not historical_records:
+            message = (
+                f"📊 VIX历史数据\n\n"
+                f"❌ 未找到最近{days}天的VIX数据\n\n"
+                f"请先使用 /vix 获取当前数据，系统将开始收集历史记录。"
+            )
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 获取VIX", callback_data="vix_current"),
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                ]
+            ]
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.edit_message_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+            return
+
+        # Format historical data
+        from bot.utils import format_vix_history_message
+        message = format_vix_history_message(historical_records, days, user_timezone)
+
+        # Create interactive buttons
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 7天", callback_data="vix_history_7"),
+                InlineKeyboardButton("📊 30天", callback_data="vix_history_30")
+            ],
+            [
+                InlineKeyboardButton("📈 当前VIX", callback_data="vix_current"),
+                InlineKeyboardButton("🔄 刷新", callback_data="refresh")
+            ]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+
+    except Exception as e:
+        logger.error(f"Error in vix_history_callback: {e}")
+        await query.edit_message_text("❌ 获取VIX历史数据时出错。") 

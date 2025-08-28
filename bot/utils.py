@@ -527,7 +527,7 @@ async def create_inline_keyboard(buttons: List[List[Dict[str, str]]], language: 
     """Create inline keyboard from button configuration"""
     try:
         from telegram import InlineKeyboardButton
-        
+
         keyboard = []
         for row in buttons:
             keyboard_row = []
@@ -535,11 +535,348 @@ async def create_inline_keyboard(buttons: List[List[Dict[str, str]]], language: 
                 text = await translate_text(button["text"], language)
                 keyboard_row.append(InlineKeyboardButton(text, callback_data=button["callback_data"]))
             keyboard.append(keyboard_row)
-        
+
         return keyboard
     except Exception as e:
         logger.error(f"Error creating inline keyboard: {e}")
         return []
+
+async def format_vix_message(data: Dict[str, Any], user_id: int = None) -> str:
+    """
+    Format VIX index data into a message
+
+    Args:
+        data: VIX market data dictionary
+        user_id: User ID for timezone formatting
+
+    Returns:
+        Formatted message string
+    """
+    try:
+        # Handle different data formats
+        current_value = data.get("current_value", 0.0)
+        previous_close = data.get("previous_close")
+        change = data.get("change")
+        change_percent = data.get("change_percent")
+        timestamp = data.get("last_update", datetime.now().isoformat())
+        cached = data.get("cached", False)
+        is_stale = data.get("is_stale", False)
+
+        # Calculate change if not provided
+        if change is None and previous_close is not None:
+            change = current_value - previous_close
+
+        if change_percent is None and previous_close is not None and previous_close > 0:
+            change_percent = (change / previous_close) * 100
+
+        # Get VIX level interpretation
+        vix_level = get_vix_level_interpretation(current_value)
+
+        # Format timestamp using user's timezone
+        formatted_time = await format_timestamp(timestamp, user_id)
+
+        # Build message
+        message = f"📊 **VIX波动率指数**\n\n"
+
+        # Current value with emoji
+        emoji = get_vix_emoji(current_value)
+        message += f"🎯 **当前指数**: {current_value:.2f} {emoji}\n"
+
+        # VIX level interpretation
+        message += f"📈 **市场解读**: {vix_level}\n\n"
+
+        # Change information
+        if change is not None:
+            change_emoji = "📈" if change >= 0 else "📉"
+            change_color = "+" if change >= 0 else ""
+            message += f"{change_emoji} **涨跌**: {change_color}{change:.2f} ({change_color}{change_percent:.2f}%)\n"
+
+        if previous_close is not None:
+            message += f"💰 **昨收**: {previous_close:.2f}\n"
+
+        # Last update time
+        message += f"🕐 **更新时间**: {formatted_time}"
+
+        # Cache status
+        if cached:
+            if is_stale:
+                message += "\n⚠️ *显示缓存数据 (API暂时不可用)*"
+            else:
+                message += "\n✅ *来自缓存数据 (最近更新)*"
+        else:
+            message += "\n🔄 *实时数据*"
+
+        # Add VIX explanation
+        message += "\n\n💡 **VIX说明**: 芝加哥期权交易所波动率指数，反映市场对未来30天波动率的预期。通常VIX值越高表示市场波动性越大，投资者恐慌情绪越强。"
+
+        # VIX scale reference
+        message += "\n\n📊 **VIX参考区间**:"
+        message += "\n• < 15: 极低波动 📊"
+        message += "\n• 15-20: 正常波动 📈"
+        message += "\n• 20-30: 较高波动 ⚠️"
+        message += "\n• 30-40: 高波动 🚨"
+        message += "\n• > 40: 极高波动 🔥"
+
+        return message
+
+    except Exception as e:
+        logger.error(f"Error formatting VIX message: {e}")
+        return "❌ Error formatting VIX data"
+
+def get_vix_emoji(value: float) -> str:
+    """Get emoji based on VIX value"""
+    try:
+        if value < 15:
+            return "🟢"  # Very low volatility
+        elif value < 20:
+            return "🟡"  # Normal volatility
+        elif value < 30:
+            return "🟠"  # High volatility
+        elif value < 40:
+            return "🔴"  # Very high volatility
+        else:
+            return "🔥"  # Extreme volatility
+    except Exception:
+        return "❓"
+
+def get_vix_level_interpretation(value: float, language: str = "zh") -> str:
+    """Get VIX level interpretation"""
+    try:
+        if language == "zh":
+            if value < 15:
+                return "极低波动 - 市场平静，投资者信心充足"
+            elif value < 20:
+                return "正常波动 - 市场运行在正常区间"
+            elif value < 25:
+                return "中等波动 - 市场开始出现不确定性"
+            elif value < 30:
+                return "较高波动 - 投资者开始谨慎"
+            elif value < 35:
+                return "高波动 - 市场出现明显波动"
+            elif value < 40:
+                return "极高波动 - 投资者恐慌情绪加剧"
+            else:
+                return "极端波动 - 市场可能出现重大事件"
+        else:
+            if value < 15:
+                return "Very Low Volatility - Market is calm"
+            elif value < 20:
+                return "Normal Volatility - Market operating normally"
+            elif value < 25:
+                return "Moderate Volatility - Some uncertainty emerging"
+            elif value < 30:
+                return "High Volatility - Investors becoming cautious"
+            elif value < 35:
+                return "Very High Volatility - Significant market swings"
+            elif value < 40:
+                return "Extreme Volatility - Panic levels increasing"
+            else:
+                return "Extreme Volatility - Major market events likely"
+    except Exception as e:
+        logger.error(f"Error getting VIX interpretation: {e}")
+        return "Unknown volatility level"
+
+def format_vix_history_message(historical_records: List, days: int, user_timezone: str = "UTC") -> str:
+    """Format VIX historical data into a message"""
+    try:
+        if not historical_records:
+            return "❌ No VIX historical data available"
+
+        # Convert records to dictionaries for processing
+        data_points = []
+        for record in historical_records:
+            if hasattr(record, 'current_value'):  # It's a database object
+                data_points.append({
+                    'value': record.current_value,
+                    'date': record.date,
+                    'change': record.change,
+                    'change_percent': record.change_percent,
+                    'previous_close': record.previous_close
+                })
+            else:  # It's already a dict
+                data_points.append(record)
+
+        # Sort by date descending (most recent first)
+        data_points.sort(key=lambda x: x.get('date', ''), reverse=True)
+
+        if not data_points:
+            return "❌ VIX historical data format error"
+
+        # Build message
+        message = f"📊 **VIX波动率指数历史 ({days}天)**\n\n"
+
+        # Latest data
+        latest = data_points[0]
+        current_value = latest.get('value', 0)
+        emoji = get_vix_emoji(current_value)
+        vix_level = get_vix_level_interpretation(current_value)
+
+        # Format time
+        latest_date = latest.get('date', datetime.now())
+        if isinstance(latest_date, str):
+            latest_date = datetime.fromisoformat(latest_date.replace('Z', '+00:00'))
+
+        # Convert to user timezone
+        try:
+            from zoneinfo import ZoneInfo
+            if ZoneInfo:
+                if latest_date.tzinfo is None:
+                    latest_date = latest_date.replace(tzinfo=ZoneInfo('UTC'))
+                user_time = latest_date.astimezone(ZoneInfo(user_timezone))
+            else:
+                import pytz
+                if latest_date.tzinfo is None:
+                    utc_time = pytz.UTC.localize(latest_date)
+                else:
+                    utc_time = latest_date
+                user_tz = pytz.timezone(user_timezone)
+                user_time = utc_time.astimezone(user_tz)
+        except:
+            user_time = latest_date
+
+        formatted_time = user_time.strftime("%m月%d日 %H:%M")
+
+        message += f"📊 **最新数据:** {current_value:.2f} {emoji}\n"
+        message += f"🕐 **更新时间:** {formatted_time}\n"
+        message += f"📈 **波动水平:** {vix_level}\n\n"
+
+        # Calculate statistics
+        values = [dp.get('value', 0) for dp in data_points]
+        if values:
+            stats = calculate_vix_statistics(values, days)
+
+            if stats:
+                message += f"📊 **{days}天统计信息:**\n"
+                message += f"• 平均值: {stats['average']:.2f}\n"
+                message += f"• 最高值: {stats['max']:.2f} {get_vix_emoji(stats['max'])}\n"
+                message += f"• 最低值: {stats['min']:.2f} {get_vix_emoji(stats['min'])}\n"
+                message += f"• 波动范围: {stats['volatility']:.2f}\n"
+                message += f"• 标准差: {stats['std_dev']:.2f}\n\n"
+
+                # Volatility interpretation
+                avg_volatility = stats['average']
+                if avg_volatility < 15:
+                    vol_text = "📊 极低波动期"
+                elif avg_volatility < 20:
+                    vol_text = "📈 正常波动期"
+                elif avg_volatility < 30:
+                    vol_text = "⚠️ 高波动期"
+                else:
+                    vol_text = "🚨 极高波动期"
+
+                message += f"📈 **整体波动:** {vol_text}\n\n"
+
+        # Show recent data points
+        message += f"📅 **最近{min(10, len(data_points))}天详情:**\n"
+
+        for i, dp in enumerate(data_points[:10]):
+            date = dp.get('date', datetime.now())
+            if isinstance(date, str):
+                date = datetime.fromisoformat(date.replace('Z', '+00:00'))
+
+            try:
+                if date.tzinfo is None:
+                    date = date.replace(tzinfo=ZoneInfo('UTC') if ZoneInfo else timezone.utc)
+                user_date = date.astimezone(ZoneInfo(user_timezone) if ZoneInfo else timezone(user_timezone))
+            except:
+                user_date = date
+
+            date_str = user_date.strftime("%m/%d")
+            value = dp.get('value', 0)
+            emoji = get_vix_emoji(value)
+
+            # Calculate change from previous day
+            if i < len(data_points) - 1:
+                prev_value = data_points[i + 1].get('value', 0)
+                day_change = value - prev_value
+                if day_change > 0:
+                    change_str = f"(+{day_change:.2f})"
+                elif day_change < 0:
+                    change_str = f"({day_change:.2f})"
+                else:
+                    change_str = "(±0.00)"
+            else:
+                change_str = ""
+
+            message += f"• {date_str}: {value:.2f} {emoji} {change_str}\n"
+
+        # Add trend analysis if enough data
+        if len(data_points) >= 3:
+            trend = analyze_vix_trend(data_points[:min(7, len(data_points))])
+            message += f"\n{trend}"
+
+        # Add data source and disclaimer
+        message += f"\n📝 **数据来源:** CBOE VIX Index\n"
+        message += f"⏰ **时区:** {user_timezone}\n"
+        message += f"📊 **记录数量:** {len(data_points)} 条"
+
+        return message
+
+    except Exception as e:
+        logger.error(f"Error formatting VIX history message: {e}")
+        return f"❌ Error formatting VIX historical data: {str(e)}"
+
+def calculate_vix_statistics(values: List[float], days: int) -> Dict[str, float]:
+    """Calculate VIX statistics"""
+    try:
+        if not values:
+            return {}
+
+        import statistics
+
+        stats = {
+            'average': sum(values) / len(values),
+            'max': max(values),
+            'min': min(values),
+            'volatility': max(values) - min(values),
+            'std_dev': statistics.stdev(values) if len(values) > 1 else 0,
+            'days_count': len(values),
+            'period': days
+        }
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error calculating VIX statistics: {e}")
+        return {}
+
+def analyze_vix_trend(data_points: List[Dict], language: str = "zh") -> str:
+    """Analyze VIX trend from recent data"""
+    try:
+        if len(data_points) < 3:
+            return ""
+
+        values = [dp.get('value', 0) for dp in data_points]
+
+        # Calculate simple trend
+        recent_avg = sum(values[:3]) / 3
+        if len(values) >= 6:
+            older_avg = sum(values[-3:]) / 3
+        else:
+            older_avg = sum(values[3:]) / max(1, len(values) - 3)
+
+        trend_change = recent_avg - older_avg
+
+        if language == "zh":
+            if trend_change > 2:
+                trend = "📈 **趋势:** VIX指数上升，市场波动性增加"
+            elif trend_change < -2:
+                trend = "📉 **趋势:** VIX指数下降，市场波动性减弱"
+            else:
+                trend = "➡️ **趋势:** VIX指数相对稳定"
+        else:
+            if trend_change > 2:
+                trend = "📈 **Trend:** VIX increasing, market volatility rising"
+            elif trend_change < -2:
+                trend = "📉 **Trend:** VIX decreasing, market volatility easing"
+            else:
+                trend = "➡️ **Trend:** VIX relatively stable"
+
+        return trend
+
+    except Exception as e:
+        logger.error(f"Error analyzing VIX trend: {e}")
+        return ""
 
 async def format_historical_data_enhanced(
     historical_records: List, 
@@ -815,34 +1152,47 @@ def calculate_market_statistics(values: List[int], days: int) -> Dict[str, Any]:
         return {}
 
 def format_simple_history(historical_records: List, days: int, user_timezone: str = "UTC") -> str:
-    """简化版历史数据格式化函数，用作备用"""
+    """Simplified historical data formatting function as backup"""
     try:
         from data.models import FearGreedData
         
         if not historical_records:
-            return "暂无历史数据"
+            return "No historical data available"
         
-        # 获取最新数据
+        # Get latest data
         latest = historical_records[0] if historical_records else None
         if not latest or not isinstance(latest, FearGreedData):
-            return "数据格式错误"
+            return "Data format error"
         
-        # 最小化版本 - 确保可以正常发送
-        message = f"历史数据查询结果\n"
-        message += f"查询天数 {days}\n"
-        message += f"最新指数 {latest.current_value}\n"
-        message += f"总记录数 {len(historical_records)}\n"
+        # Minimized version - ensure it can be sent normally
+        message = f"Fear & Greed Index History\n"
+        message += f"Query period: {days} days\n"
+        message += f"Latest index: {latest.current_value}\n"
+        message += f"Total records: {len(historical_records)}\n"
+        message += f"Timezone: {user_timezone}\n"
         
-        # 只显示基本统计
+        # Display basic statistics only
         values = [record.current_value for record in historical_records if isinstance(record, FearGreedData)]
         if values and len(values) > 0:
             avg_val = sum(values) / len(values)
-            message += f"平均值 {avg_val:.1f}\n"
-            message += f"最高 {max(values)}\n"
-            message += f"最低 {min(values)}\n"
+            message += f"\nStatistics:\n"
+            message += f"Average: {avg_val:.1f}\n"
+            message += f"Highest: {max(values)}\n"
+            message += f"Lowest: {min(values)}\n"
+            message += f"Volatility: {max(values) - min(values)}\n"
+        
+        # Add recent data points
+        message += f"\nRecent {min(5, len(historical_records))} days:\n"
+        for i, record in enumerate(historical_records[:5]):
+            if isinstance(record, FearGreedData):
+                try:
+                    date_str = record.date.strftime("%m-%d") if record.date else "Unknown"
+                    message += f"{date_str}: {record.current_value}\n"
+                except:
+                    message += f"Day {i+1}: {record.current_value}\n"
         
         return message
         
     except Exception as e:
         logger.error(f"Error in simple history format: {e}")
-        return f"格式化失败 {str(e)}" 
+        return f"Formatting failed: {str(e)}" 

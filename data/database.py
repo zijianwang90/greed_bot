@@ -436,14 +436,143 @@ class VixRepository:
         from sqlalchemy import select
         async with get_db_session() as session:
             cutoff_time = datetime.utcnow() - timedelta(minutes=max_age_minutes)
-            
+
             result = await session.execute(
                 select(VixData).filter(
                     VixData.created_at >= cutoff_time
                 ).order_by(VixData.created_at.desc()).limit(1)
             )
-            
+
             return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_vix_history(days: int = 7) -> List[VixData]:
+        """获取VIX历史数据"""
+        from sqlalchemy import select, and_
+        async with get_db_session() as session:
+            cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+            result = await session.execute(
+                select(VixData).filter(
+                    and_(
+                        VixData.date >= cutoff_date,
+                        VixData.date <= datetime.utcnow()
+                    )
+                ).order_by(VixData.date.desc())
+            )
+
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_vix_by_date_range(start_date: datetime, end_date: datetime) -> List[VixData]:
+        """根据日期范围获取VIX数据"""
+        from sqlalchemy import select, and_
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(VixData).filter(
+                    and_(
+                        VixData.date >= start_date,
+                        VixData.date <= end_date
+                    )
+                ).order_by(VixData.date.desc())
+            )
+
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_vix_statistics(days: int = 30) -> Dict[str, Any]:
+        """获取VIX统计信息"""
+        try:
+            from sqlalchemy import select, and_, func
+            async with get_db_session() as session:
+                cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+                # 获取统计数据
+                result = await session.execute(
+                    select(
+                        func.count(VixData.id).label('count'),
+                        func.avg(VixData.current_value).label('avg_value'),
+                        func.max(VixData.current_value).label('max_value'),
+                        func.min(VixData.current_value).label('min_value'),
+                        func.stddev(VixData.current_value).label('std_dev')
+                    ).filter(
+                        and_(
+                            VixData.date >= cutoff_date,
+                            VixData.date <= datetime.utcnow()
+                        )
+                    )
+                )
+
+                row = result.first()
+
+                if row:
+                    return {
+                        'count': row.count or 0,
+                        'average': float(row.avg_value) if row.avg_value else 0.0,
+                        'max': float(row.max_value) if row.max_value else 0.0,
+                        'min': float(row.min_value) if row.min_value else 0.0,
+                        'std_dev': float(row.std_dev) if row.std_dev else 0.0,
+                        'volatility_range': (float(row.max_value) - float(row.min_value)) if row.max_value and row.min_value else 0.0,
+                        'period_days': days
+                    }
+
+                return {}
+
+        except Exception as e:
+            logger.error(f"Error getting VIX statistics: {e}")
+            return {}
+
+    @staticmethod
+    async def save_vix_data_batch(vix_data_list: List[Dict]) -> int:
+        """批量保存VIX数据"""
+        try:
+            async with get_db_session() as session:
+                saved_count = 0
+                for data in vix_data_list:
+                    # 检查是否已存在相同日期的数据
+                    existing = await session.execute(
+                        select(VixData).filter(
+                            VixData.date == data.get('date', datetime.utcnow().date())
+                        )
+                    )
+
+                    if not existing.scalar_one_or_none():
+                        new_data = VixData(
+                            date=data.get('date', datetime.utcnow()),
+                            current_value=data.get('current_value', 0.0),
+                            previous_close=data.get('previous_close'),
+                            change=data.get('change'),
+                            change_percent=data.get('change_percent')
+                        )
+
+                        session.add(new_data)
+                        saved_count += 1
+
+                await session.commit()
+                return saved_count
+
+        except Exception as e:
+            logger.error(f"Error saving VIX data batch: {e}")
+            return 0
+
+    @staticmethod
+    async def cleanup_old_vix_data(days_to_keep: int = 365) -> int:
+        """清理旧的VIX数据"""
+        try:
+            from sqlalchemy import delete
+            async with get_db_session() as session:
+                cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+
+                result = await session.execute(
+                    delete(VixData).filter(VixData.date < cutoff_date)
+                )
+
+                await session.commit()
+                return result.rowcount
+
+        except Exception as e:
+            logger.error(f"Error cleaning up old VIX data: {e}")
+            return 0
 
 
 # 便捷函数用于缓存操作
