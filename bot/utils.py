@@ -573,7 +573,7 @@ async def format_vix_message(data: Dict[str, Any], user_id: int = None) -> str:
         vix_level = get_vix_level_interpretation(current_value)
 
         # Format timestamp using user's timezone
-        formatted_time = await format_timestamp(timestamp, user_id)
+        formatted_time = await format_timestamp_for_user(timestamp, user_id)
 
         # Build message
         message = f"📊 **VIX波动率指数**\n\n"
@@ -879,6 +879,69 @@ def analyze_vix_trend(data_points: List[Dict], language: str = "zh") -> str:
     except Exception as e:
         logger.error(f"Error analyzing VIX trend: {e}")
         return ""
+
+async def format_timestamp_for_user(timestamp_str, user_id=None):
+    """Format timestamp string to more readable format using user's timezone"""
+    if not timestamp_str or timestamp_str == 'Unknown':
+        return 'Unknown'
+    
+    try:
+        # Get user's timezone if user_id is provided
+        user_timezone = None
+        if user_id:
+            try:
+                from data.database import UserRepository
+                user_timezone = await UserRepository.get_user_timezone(user_id)
+            except Exception as e:
+                logger.warning(f"Could not get user timezone for {user_id}: {e}")
+        
+        # Fallback to configured timezone
+        import config_local
+        configured_tz = user_timezone or getattr(config_local, 'DEFAULT_TIMEZONE', 'UTC')
+        
+        # Handle different timestamp formats
+        if 'T' in timestamp_str:
+            # ISO format: 2025-08-25T14:52:46+00:00
+            if '+' in timestamp_str or timestamp_str.endswith('Z'):
+                dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            else:
+                # Handle format without timezone - assume UTC
+                dt = datetime.fromisoformat(timestamp_str + '+00:00')
+        else:
+            # Try other formats - assume UTC if no timezone info
+            dt = datetime.fromisoformat(timestamp_str + '+00:00')
+        
+        # Convert to target timezone
+        if configured_tz != 'UTC':
+            try:
+                try:
+                    from zoneinfo import ZoneInfo
+                    # Use zoneinfo (Python 3.9+)
+                    target_tz = ZoneInfo(configured_tz)
+                    dt_converted = dt.astimezone(target_tz)
+                    # Format with timezone abbreviation
+                    tz_name = dt_converted.strftime('%Z') or configured_tz
+                    return dt_converted.strftime(f"%b %d, %Y at %H:%M {tz_name}")
+                except ImportError:
+                    # Use pytz (Python < 3.9)
+                    import pytz
+                    target_tz = pytz.timezone(configured_tz)
+                    dt_converted = dt.astimezone(target_tz)
+                    # Format with timezone abbreviation
+                    tz_name = dt_converted.strftime('%Z') or configured_tz
+                    return dt_converted.strftime(f"%b %d, %Y at %H:%M {tz_name}")
+            except Exception as tz_error:
+                logger.warning(f"Invalid timezone '{configured_tz}': {tz_error}, falling back to UTC")
+                # Fallback to UTC
+                return dt.strftime("%b %d, %Y at %H:%M UTC")
+        else:
+            # Use UTC directly
+            return dt.strftime("%b %d, %Y at %H:%M UTC")
+            
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Could not parse timestamp '{timestamp_str}': {e}")
+        # Return a simple formatted version of current time
+        return datetime.now().strftime("%b %d, %Y at %H:%M UTC")
 
 async def format_historical_data_enhanced(
     historical_records: List, 
