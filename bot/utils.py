@@ -827,26 +827,22 @@ def format_simple_history(historical_records: List, days: int, user_timezone: st
         if not latest or not isinstance(latest, FearGreedData):
             return "数据格式错误"
         
-        # 基本信息
-        message = f"历史数据 ({days}天)\n\n"
-        message += f"最新指数: {latest.current_value}\n"
-        message += f"数据条数: {len(historical_records)}\n"
-        message += f"时区: {user_timezone}\n"
+        # 最小化版本 - 确保可以正常发送
+        message = f"历史数据查询结果\n"
+        message += f"查询天数 {days}\n"
+        message += f"最新指数 {latest.current_value}\n"
+        message += f"总记录数 {len(historical_records)}\n"
         
-        # 统计信息
+        # 只显示基本统计
         values = [record.current_value for record in historical_records if isinstance(record, FearGreedData)]
-        if values:
-            avg_value = sum(values) / len(values)
-            max_value = max(values)
-            min_value = min(values)
-            
-            message += f"\n统计信息:\n"
-            message += f"平均值: {avg_value:.1f}\n"
-            message += f"最高值: {max_value}\n"
-            message += f"最低值: {min_value}\n"
+        if values and len(values) > 0:
+            avg_val = sum(values) / len(values)
+            message += f"平均值 {avg_val:.1f}\n"
+            message += f"最高 {max(values)}\n"
+            message += f"最低 {min(values)}\n"
         
         return message
         
     except Exception as e:
         logger.error(f"Error in simple history format: {e}")
-        return f"格式化历史数据时出错: {str(e)}" 
+        return f"格式化失败 {str(e)}" 

@@ -637,7 +637,6 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         await loading_msg.edit_text(
             message,
-            parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
         
@@ -891,7 +890,6 @@ async def history_callback(query, callback_data: str):
         
         await query.edit_message_text(
             message,
-            parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
         
