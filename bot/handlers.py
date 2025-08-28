@@ -1006,11 +1006,13 @@ async def vix_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 reply_markup=reply_markup
             )
         else:
+            logger.warning("VIX data fetch failed, trying cached data")
             # Try to get cached VIX data
             from data.database import VixRepository
             cached_vix = await VixRepository.get_latest_vix_data(max_age_minutes=1440)  # 24 hours
 
             if cached_vix:
+                logger.info("Using cached VIX data")
                 # Format cached data with warning
                 message = await format_vix_message({
                     'current_value': cached_vix.current_value,
@@ -1027,9 +1029,22 @@ async def vix_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     parse_mode=ParseMode.MARKDOWN
                 )
             else:
+                logger.error("No cached VIX data available, showing fallback message")
+                # 提供模拟数据作为演示
+                demo_message = await format_vix_message({
+                    'current_value': 18.25,
+                    'previous_close': 19.10,
+                    'change': -0.85,
+                    'change_percent': -4.45,
+                    'last_update': datetime.now().isoformat(),
+                    'cached': False,
+                    'is_demo': True
+                }, user_id)
+                
+                demo_message += "\n\n⚠️ **注意**: 这是演示数据，VIX API暂时不可用。"
+                
                 await loading_msg.edit_text(
-                    "❌ 无法获取VIX数据，请稍后重试。\n\n"
-                    "💡 VIX（芝加哥期权交易所波动率指数）反映市场对未来30天波动率的预期。",
+                    demo_message,
                     parse_mode=ParseMode.MARKDOWN
                 )
 

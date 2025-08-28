@@ -603,6 +603,8 @@ async def format_vix_message(data: Dict[str, Any], user_id: int = None) -> str:
                 message += "\n⚠️ *显示缓存数据 (API暂时不可用)*"
             else:
                 message += "\n✅ *来自缓存数据 (最近更新)*"
+        elif data.get('is_demo'):
+            message += "\n🎭 *演示数据 (API暂时不可用)*"
         else:
             message += "\n🔄 *实时数据*"
 

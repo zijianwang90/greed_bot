@@ -216,32 +216,164 @@ class FearGreedDataFetcher:
     
     async def get_vix_data(self) -> Optional[Dict]:
         """获取 VIX 波动率指数数据"""
-        try:
-            # Yahoo Finance API for VIX
-            url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX"
-            
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_vix_data(data)
+        # 尝试多个数据源
+        vix_sources = [
+            {
+                'name': 'Yahoo Finance Chart API',
+                'url': 'https://query1.finance.yahoo.com/v8/finance/chart/^VIX',
+                'parser': self._parse_yahoo_chart_data
+            },
+            {
+                'name': 'Yahoo Finance Quote API',
+                'url': 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=^VIX',
+                'parser': self._parse_yahoo_quote_data
+            }
+        ]
+        
+        for source in vix_sources:
+            try:
+                logger.info(f"Trying VIX source: {source['name']} - {source['url']}")
+                
+                # 添加延迟以避免过于频繁的请求
+                import random
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+                
+                async with self.session.get(source['url']) as response:
+                    logger.info(f"VIX {source['name']} response status: {response.status}")
                     
-        except Exception as e:
-            logger.error(f"获取 VIX 数据失败: {e}")
-            
-        return None
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info(f"VIX {source['name']} data keys: {list(data.keys()) if data else 'No data'}")
+                        parsed_data = source['parser'](data)
+                        
+                        if parsed_data and parsed_data.get('current_value', 0) > 0:
+                            logger.info(f"Successfully got VIX data from {source['name']}: {parsed_data}")
+                            return parsed_data
+                        else:
+                            logger.warning(f"VIX {source['name']} returned invalid data: {parsed_data}")
+                    
+                    elif response.status == 429:
+                        logger.warning(f"VIX {source['name']} rate limited, trying next source")
+                        continue
+                    else:
+                        logger.error(f"VIX {source['name']} returned status {response.status}")
+                        response_text = await response.text()
+                        logger.error(f"VIX {source['name']} response: {response_text[:200]}...")
+                        continue
+                        
+            except Exception as e:
+                logger.error(f"VIX {source['name']} failed: {e}")
+                continue
+        
+        # 如果所有源都失败，返回模拟数据用于演示
+        logger.warning("All VIX sources failed, returning demo data")
+        return self._get_demo_vix_data()
     
-    def _parse_vix_data(self, data: Dict) -> Dict:
-        """解析 VIX 数据"""
+    def _parse_yahoo_quote_data(self, data: Dict) -> Dict:
+        """解析Yahoo Finance Quote API数据"""
         try:
-            result = data['chart']['result'][0]
+            if 'quoteResponse' not in data:
+                logger.error("No 'quoteResponse' in Yahoo quote data")
+                return {}
+                
+            quote_response = data['quoteResponse']
+            if 'result' not in quote_response or not quote_response['result']:
+                logger.error("No 'result' in quote response")
+                return {}
+                
+            result = quote_response['result'][0]
+            logger.info(f"Yahoo quote result: {result}")
+            
+            current_price = result.get('regularMarketPrice', 0)
+            previous_close = result.get('regularMarketPreviousClose', 0)
+            
+            if current_price == 0:
+                current_price = result.get('bid', result.get('ask', 0))
+            
+            change = result.get('regularMarketChange', 0)
+            change_percent = result.get('regularMarketChangePercent', 0)
+            
+            if change == 0 and previous_close > 0:
+                change = current_price - previous_close
+                change_percent = (change / previous_close) * 100
+            
+            parsed_result = {
+                'current_value': round(current_price, 2),
+                'previous_close': round(previous_close, 2),
+                'change': round(change, 2),
+                'change_percent': round(change_percent, 2),
+                'last_update': datetime.now().isoformat(),
+                'source': 'Yahoo Finance Quote API'
+            }
+            
+            logger.info(f"Parsed Yahoo quote VIX data: {parsed_result}")
+            return parsed_result
+            
+        except Exception as e:
+            logger.error(f"解析Yahoo Quote VIX数据失败: {e}", exc_info=True)
+            return {}
+    
+    def _get_demo_vix_data(self) -> Dict:
+        """获取演示VIX数据"""
+        import random
+        
+        # 生成合理范围内的VIX数据 (通常在10-80之间)
+        base_vix = random.uniform(15.0, 35.0)
+        previous_close = base_vix + random.uniform(-2.0, 2.0)
+        change = base_vix - previous_close
+        change_percent = (change / previous_close) * 100
+        
+        demo_data = {
+            'current_value': round(base_vix, 2),
+            'previous_close': round(previous_close, 2),
+            'change': round(change, 2),
+            'change_percent': round(change_percent, 2),
+            'last_update': datetime.now().isoformat(),
+            'source': 'Demo Data',
+            'is_demo': True
+        }
+        
+        logger.info(f"Generated demo VIX data: {demo_data}")
+        return demo_data
+    
+    def _parse_yahoo_chart_data(self, data: Dict) -> Dict:
+        """解析Yahoo Finance Chart API数据"""
+        try:
+            logger.info(f"Parsing VIX data structure: {data}")
+            
+            if 'chart' not in data:
+                logger.error("No 'chart' key in VIX data")
+                return {}
+                
+            chart = data['chart']
+            if 'result' not in chart or not chart['result']:
+                logger.error("No 'result' in chart data or result is empty")
+                return {}
+                
+            result = chart['result'][0]
+            logger.info(f"VIX result keys: {list(result.keys())}")
+            
+            if 'meta' not in result:
+                logger.error("No 'meta' key in result")
+                return {}
+                
             meta = result['meta']
+            logger.info(f"VIX meta data: {meta}")
             
             current_price = meta.get('regularMarketPrice', 0)
             previous_close = meta.get('previousClose', 0)
-            change = current_price - previous_close
+            
+            if current_price == 0:
+                logger.warning("Current price is 0, checking alternative fields")
+                # Try alternative fields
+                current_price = meta.get('currentPrice', 0)
+                if current_price == 0:
+                    current_price = meta.get('price', 0)
+            
+            change = current_price - previous_close if previous_close else 0
             change_percent = (change / previous_close) * 100 if previous_close else 0
             
-            return {
+            parsed_result = {
                 'current_value': round(current_price, 2),
                 'previous_close': round(previous_close, 2),
                 'change': round(change, 2),
@@ -249,8 +381,11 @@ class FearGreedDataFetcher:
                 'last_update': datetime.now().isoformat()
             }
             
+            logger.info(f"Successfully parsed VIX data: {parsed_result}")
+            return parsed_result
+            
         except Exception as e:
-            logger.error(f"解析 VIX 数据失败: {e}")
+            logger.error(f"解析 VIX 数据失败: {e}", exc_info=True)
             return {}
     
     async def get_put_call_ratio(self) -> Optional[Dict]:
