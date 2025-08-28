@@ -613,13 +613,12 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
             return
         
-        # 格式化历史数据
-        from bot.utils import format_historical_data_enhanced
-        message = await format_historical_data_enhanced(
+        # 格式化历史数据 (临时使用简化版本避免Markdown错误)
+        from bot.utils import format_simple_history
+        message = format_simple_history(
             historical_records, 
             days=days,
-            user_timezone=user_timezone,
-            language="zh"
+            user_timezone=user_timezone
         )
         
         # 创建交互按钮
@@ -868,13 +867,12 @@ async def history_callback(query, callback_data: str):
             )
             return
         
-        # 格式化历史数据
-        from bot.utils import format_historical_data_enhanced
-        message = await format_historical_data_enhanced(
+        # 格式化历史数据 (临时使用简化版本避免Markdown错误)
+        from bot.utils import format_simple_history
+        message = format_simple_history(
             historical_records, 
             days=days,
-            user_timezone=user_timezone,
-            language="zh"
+            user_timezone=user_timezone
         )
         
         # 创建交互按钮

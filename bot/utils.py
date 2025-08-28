@@ -707,10 +707,10 @@ async def format_historical_data_enhanced(
             
             message += f"• {date_str}: {value} {emoji} {change_str}\n"
         
-        # 添加简单的ASCII图表
+        # 添加简单的趋势展示
         if len(data_points) >= 2:
-            chart = generate_simple_chart(values[:min(14, len(values))])
-            message += f"\n📊 **趋势图表 (最近{min(14, len(values))}天):**\n```\n{chart}\n```\n"
+            trend_display = generate_trend_display(values[:min(10, len(values))])
+            message += f"\n📊 **趋势展示 (最近{min(10, len(values))}天):**\n{trend_display}\n"
         
         # 添加数据来源和免责声明
         message += f"📝 **数据来源:** CNN Fear & Greed Index\n"
@@ -723,69 +723,49 @@ async def format_historical_data_enhanced(
         logger.error(f"Error formatting enhanced historical data: {e}")
         return f"❌ 格式化历史数据时出错: {str(e)}"
 
-def generate_simple_chart(values: List[int], width: int = 30, height: int = 8) -> str:
-    """生成简单的ASCII图表"""
+def generate_trend_display(values: List[int]) -> str:
+    """生成简单的趋势显示"""
     try:
         if not values or len(values) < 2:
-            return "数据不足以生成图表"
+            return "数据不足"
         
         # 确保值在0-100范围内
         values = [max(0, min(100, v)) for v in values]
         
-        # 创建图表矩阵
-        chart = [[' ' for _ in range(width)] for _ in range(height)]
-        
-        # 计算每个数据点的位置
-        for i, value in enumerate(values[:width]):
-            x = i
-            y = height - 1 - int((value / 100) * (height - 1))
-            
-            # 根据值选择字符
-            if value >= 75:
-                char = '🟢'  # 极度贪婪
-            elif value >= 55:
-                char = '🟡'  # 贪婪
-            elif value >= 45:
-                char = '⚪'  # 中性
-            elif value >= 25:
-                char = '🟠'  # 恐慌
-            else:
-                char = '🔴'  # 极度恐慌
-            
-            if x < width and 0 <= y < height:
-                chart[y][x] = char
-        
-        # 添加网格线和标签
         result = []
         
-        # 顶部标签
-        result.append("100 ┬" + "─" * (width - 2) + "┐")
-        
-        # 图表内容
-        for row_idx, row in enumerate(chart):
-            if row_idx == height // 4:
-                label = " 75 ├"
-            elif row_idx == height // 2:
-                label = " 50 ├"
-            elif row_idx == 3 * height // 4:
-                label = " 25 ├"
+        for i, value in enumerate(values):
+            # 根据值选择emoji
+            if value >= 75:
+                emoji = "🟢"  # 极度贪婪
+            elif value >= 55:
+                emoji = "🟡"  # 贪婪
+            elif value >= 45:
+                emoji = "⚪"  # 中性
+            elif value >= 25:
+                emoji = "🟠"  # 恐慌
             else:
-                label = "    │"
+                emoji = "🔴"  # 极度恐慌
             
-            result.append(label + "".join(row) + "│")
+            # 显示变化趋势
+            if i > 0:
+                prev_value = values[i-1]
+                if value > prev_value + 2:
+                    trend = "↗"
+                elif value < prev_value - 2:
+                    trend = "↘"
+                else:
+                    trend = "→"
+            else:
+                trend = ""
+            
+            result.append(f"{value} {emoji} {trend}")
         
-        # 底部标签
-        result.append("  0 └" + "─" * (width - 2) + "┘")
-        
-        # 添加图例
-        result.append("")
-        result.append("🔴极度恐慌 🟠恐慌 ⚪中性 🟡贪婪 🟢极度贪婪")
-        
-        return "\n".join(result)
+        return " | ".join(result)
         
     except Exception as e:
-        logger.error(f"Error generating chart: {e}")
-        return "图表生成失败"
+        logger.error(f"Error generating trend display: {e}")
+        return "趋势显示失败"
 
 def calculate_market_statistics(values: List[int], days: int) -> Dict[str, Any]:
     """计算市场统计信息"""
@@ -832,4 +812,41 @@ def calculate_market_statistics(values: List[int], days: int) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error calculating statistics: {e}")
-        return {} 
+        return {}
+
+def format_simple_history(historical_records: List, days: int, user_timezone: str = "UTC") -> str:
+    """简化版历史数据格式化函数，用作备用"""
+    try:
+        from data.models import FearGreedData
+        
+        if not historical_records:
+            return "暂无历史数据"
+        
+        # 获取最新数据
+        latest = historical_records[0] if historical_records else None
+        if not latest or not isinstance(latest, FearGreedData):
+            return "数据格式错误"
+        
+        # 基本信息
+        message = f"历史数据 ({days}天)\n\n"
+        message += f"最新指数: {latest.current_value}\n"
+        message += f"数据条数: {len(historical_records)}\n"
+        message += f"时区: {user_timezone}\n"
+        
+        # 统计信息
+        values = [record.current_value for record in historical_records if isinstance(record, FearGreedData)]
+        if values:
+            avg_value = sum(values) / len(values)
+            max_value = max(values)
+            min_value = min(values)
+            
+            message += f"\n统计信息:\n"
+            message += f"平均值: {avg_value:.1f}\n"
+            message += f"最高值: {max_value}\n"
+            message += f"最低值: {min_value}\n"
+        
+        return message
+        
+    except Exception as e:
+        logger.error(f"Error in simple history format: {e}")
+        return f"格式化历史数据时出错: {str(e)}" 
