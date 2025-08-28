@@ -480,64 +480,99 @@ async def force_data_update() -> bool:
 async def trigger_test_notification(user_id: int) -> bool:
     """Trigger immediate test notification for a specific user (admin only)"""
     try:
+        logger.info(f"Starting test notification for user {user_id}")
+        
+        # Check if scheduler is available
         scheduler = get_scheduler()
         if not scheduler:
             logger.error("Scheduler not available for test notification")
             return False
         
+        logger.debug(f"Scheduler available, checking user {user_id}")
+        
         # Get user from database
         from data.database import UserRepository
         user = await UserRepository.get_user_by_telegram_id(user_id)
         if not user:
-            logger.error(f"User {user_id} not found for test notification")
+            logger.error(f"User {user_id} not found in database for test notification")
             return False
+        
+        logger.debug(f"User {user_id} found: subscribed={user.is_subscribed}, tz={user.timezone}")
         
         if not user.is_subscribed:
             logger.warning(f"User {user_id} is not subscribed, sending test notification anyway")
         
+        # Check if we have market data
+        current_data = await scheduler.data_fetcher.get_current_fear_greed_index()
+        if not current_data:
+            logger.error(f"No market data available for test notification to user {user_id}")
+            return False
+        
+        logger.debug(f"Market data available for user {user_id}: {current_data}")
+        
         # Send test notification
         await scheduler._send_daily_notification(user)
-        logger.info(f"Test notification sent to user {user_id}")
+        logger.info(f"Test notification sent successfully to user {user_id}")
         return True
         
     except Exception as e:
-        logger.error(f"Error sending test notification to user {user_id}: {e}")
+        logger.error(f"Error sending test notification to user {user_id}: {e}", exc_info=True)
         return False
 
 async def check_notification_status() -> dict:
     """Get notification status for debugging"""
     try:
+        logger.debug("Checking notification status...")
+        
         from data.database import get_subscribed_users
         
         scheduler = get_scheduler()
-        users = await get_subscribed_users()
         current_time = datetime.now(timezone.utc)
         
+        # Initialize status with basic info
         status = {
-            "scheduler_running": scheduler and scheduler.scheduler.running,
-            "current_utc_time": current_time.isoformat(),
-            "subscribed_users_count": len(users),
+            "scheduler_running": scheduler and scheduler.scheduler.running if scheduler else False,
+            "current_utc_time": current_time.strftime('%Y-%m-%d %H:%M:%S UTC'),
+            "subscribed_users_count": 0,
             "users_ready_for_notification": 0,
             "user_details": []
         }
         
-        if scheduler:
-            for user in users:
-                should_notify = await scheduler._should_send_notification(user, current_time)
-                user_info = {
-                    "user_id": user.user_id,
-                    "push_time": user.push_time,
-                    "timezone": user.timezone,
-                    "last_notification": user.last_notification_sent.isoformat() if user.last_notification_sent else None,
-                    "should_notify_now": should_notify
-                }
-                status["user_details"].append(user_info)
-                
-                if should_notify:
-                    status["users_ready_for_notification"] += 1
+        try:
+            users = await get_subscribed_users()
+            status["subscribed_users_count"] = len(users)
+            logger.debug(f"Found {len(users)} subscribed users")
+        except Exception as db_error:
+            logger.error(f"Error getting subscribed users: {db_error}")
+            return {**status, "error": f"Database error: {str(db_error)}"}
         
+        if scheduler and users:
+            for user in users:
+                try:
+                    should_notify = await scheduler._should_send_notification(user, current_time)
+                    user_info = {
+                        "user_id": user.user_id,
+                        "push_time": user.push_time or "09:00",
+                        "timezone": user.timezone or "UTC", 
+                        "last_notification": user.last_notification_sent.strftime('%Y-%m-%d %H:%M:%S') if user.last_notification_sent else None,
+                        "should_notify_now": should_notify
+                    }
+                    status["user_details"].append(user_info)
+                    
+                    if should_notify:
+                        status["users_ready_for_notification"] += 1
+                        
+                except Exception as user_error:
+                    logger.warning(f"Error processing user {user.user_id}: {user_error}")
+                    # Add user with error info
+                    status["user_details"].append({
+                        "user_id": user.user_id,
+                        "error": str(user_error)
+                    })
+        
+        logger.debug(f"Notification status check completed: {status['users_ready_for_notification']} ready")
         return status
         
     except Exception as e:
-        logger.error(f"Error checking notification status: {e}")
+        logger.error(f"Error checking notification status: {e}", exc_info=True)
         return {"error": str(e)} 

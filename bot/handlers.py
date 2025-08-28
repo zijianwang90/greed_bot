@@ -929,20 +929,25 @@ async def test_notification_handler(update: Update, context: ContextTypes.DEFAUL
         
         loading_msg = await update.message.reply_text(f"🔄 Sending test notification to user {target_user_id}...")
         
+        # Import scheduler functions
         from bot.scheduler import trigger_test_notification
+        
+        logger.info(f"Admin {user_id} requested test notification for user {target_user_id}")
+        
+        # Try to send test notification
         success = await trigger_test_notification(target_user_id)
         
         if success:
             message = f"✅ Test notification sent successfully to user {target_user_id}"
         else:
-            message = f"❌ Failed to send test notification to user {target_user_id}"
+            message = f"❌ Failed to send test notification to user {target_user_id}. Check logs for details."
         
         await loading_msg.edit_text(message)
         
     except ValueError:
         await update.message.reply_text("❌ Invalid user ID. Usage: /test_notification [user_id]")
     except Exception as e:
-        logger.error(f"Error in test_notification_handler: {e}")
+        logger.error(f"Error in test_notification_handler: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Error sending test notification: {str(e)}")
 
 
@@ -964,21 +969,27 @@ async def notification_status_handler(update: Update, context: ContextTypes.DEFA
         if "error" in status:
             message = f"❌ Error checking status: {status['error']}"
         else:
+            # Use HTML parse mode to avoid Markdown conflicts with special characters
             message = (
-                f"📊 **Notification Status**\n\n"
-                f"🔧 **Scheduler Running**: {'✅' if status['scheduler_running'] else '❌'}\n"
-                f"🕐 **Current UTC Time**: {status['current_utc_time']}\n"
-                f"👥 **Subscribed Users**: {status['subscribed_users_count']}\n"
-                f"🔔 **Ready for Notification**: {status['users_ready_for_notification']}\n\n"
+                f"📊 <b>Notification Status</b>\n\n"
+                f"🔧 <b>Scheduler Running</b>: {'✅' if status['scheduler_running'] else '❌'}\n"
+                f"🕐 <b>Current UTC Time</b>: {status['current_utc_time']}\n"
+                f"👥 <b>Subscribed Users</b>: {status['subscribed_users_count']}\n"
+                f"🔔 <b>Ready for Notification</b>: {status['users_ready_for_notification']}\n\n"
             )
             
             if status['user_details']:
-                message += "**User Details:**\n"
+                message += "<b>User Details:</b>\n"
                 for user_info in status['user_details'][:5]:  # Show first 5 users
                     should_notify = "🔔" if user_info['should_notify_now'] else "⏸️"
+                    # Escape HTML special characters in user data
+                    user_id = str(user_info['user_id'])
+                    push_time = str(user_info['push_time'] or 'N/A')
+                    timezone_str = str(user_info['timezone'] or 'N/A')
+                    
                     message += (
-                        f"{should_notify} User {user_info['user_id']}: "
-                        f"{user_info['push_time']} {user_info['timezone']}\n"
+                        f"{should_notify} User {user_id}: "
+                        f"{push_time} {timezone_str}\n"
                     )
                 
                 if len(status['user_details']) > 5:
@@ -986,7 +997,7 @@ async def notification_status_handler(update: Update, context: ContextTypes.DEFA
         
         await loading_msg.edit_text(
             message,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
         
     except Exception as e:
