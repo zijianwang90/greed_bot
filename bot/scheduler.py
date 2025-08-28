@@ -134,29 +134,71 @@ class NotificationScheduler:
     async def _should_send_notification(self, user, current_time: datetime) -> bool:
         """Check if user should receive notification now"""
         try:
-            # Get user's notification time
+            # Get user's notification time and timezone
             notification_time = user.push_time or config.DEFAULT_NOTIFICATION_TIME
             user_timezone = user.timezone or config.DEFAULT_TIMEZONE
+            
+            logger.debug(f"Checking notification for user {user.user_id}: time={notification_time}, tz={user_timezone}")
             
             # Parse notification time
             hour, minute = map(int, notification_time.split(':'))
             
-            # Convert to user's timezone (simplified - in production use proper timezone handling)
-            user_current_time = current_time
+            # Convert current UTC time to user's timezone
+            try:
+                # Import timezone handling
+                try:
+                    from zoneinfo import ZoneInfo
+                except ImportError:
+                    # Fallback for Python < 3.9
+                    import pytz
+                    ZoneInfo = None
+                
+                if ZoneInfo is not None:
+                    # Use zoneinfo (Python 3.9+)
+                    user_tz = ZoneInfo(user_timezone)
+                    user_current_time = current_time.astimezone(user_tz)
+                else:
+                    # Use pytz (Python < 3.9)
+                    user_tz = pytz.timezone(user_timezone)
+                    user_current_time = current_time.astimezone(user_tz)
+                
+                logger.debug(f"User {user.user_id} local time: {user_current_time}, target: {hour:02d}:{minute:02d}")
+                
+            except Exception as tz_error:
+                logger.warning(f"Invalid timezone '{user_timezone}' for user {user.user_id}: {tz_error}, using UTC")
+                user_current_time = current_time
             
-            # Check if it's the right time to send notification
+            # Check if it's the right time to send notification (within 1 minute window)
             if (user_current_time.hour == hour and 
                 user_current_time.minute == minute):
                 
                 # Check if we haven't already sent today
                 last_notification = user.last_notification_sent
                 if last_notification:
-                    last_date = last_notification.date()
-                    current_date = current_time.date()
-                    
-                    if last_date >= current_date:
-                        return False  # Already sent today
+                    # Convert last notification to user timezone for comparison
+                    try:
+                        if ZoneInfo is not None:
+                            last_notification_local = last_notification.astimezone(user_tz)
+                        else:
+                            last_notification_local = user_tz.normalize(user_tz.localize(last_notification.replace(tzinfo=None)) if last_notification.tzinfo is None else last_notification.astimezone(user_tz))
+                        
+                        last_date = last_notification_local.date()
+                        current_date = user_current_time.date()
+                        
+                        logger.debug(f"User {user.user_id} last notification: {last_date}, current: {current_date}")
+                        
+                        if last_date >= current_date:
+                            logger.debug(f"User {user.user_id} already received notification today")
+                            return False  # Already sent today
+                    except Exception as date_error:
+                        logger.warning(f"Error comparing notification dates for user {user.user_id}: {date_error}")
+                        # If there's an error, check based on UTC dates as fallback
+                        last_date = last_notification.date() if last_notification.tzinfo else last_notification.date()
+                        current_date = current_time.date()
+                        if last_date >= current_date:
+                            return False
                 
+                logger.info(f"User {user.user_id} should receive notification now")
                 return True
             
             return False
@@ -168,12 +210,16 @@ class NotificationScheduler:
     async def _send_daily_notification(self, user):
         """Send daily notification to a user"""
         try:
+            logger.info(f"Sending daily notification to user {user.user_id}")
+            
             # Get current market data
             current_data = await self.data_fetcher.get_current_fear_greed_index()
             
             if not current_data:
                 logger.warning(f"No market data available for notification to user {user.user_id}")
                 return
+            
+            logger.debug(f"Market data for user {user.user_id}: {current_data}")
             
             # Get user language
             user_lang = user.language_code or config.DEFAULT_LANGUAGE
@@ -185,15 +231,40 @@ class NotificationScheduler:
                 include_details=config.INCLUDE_ANALYSIS
             )
             
-            # Add daily notification header
+            # Get current time in user's timezone for header
+            try:
+                # Import timezone handling
+                try:
+                    from zoneinfo import ZoneInfo
+                except ImportError:
+                    import pytz
+                    ZoneInfo = None
+                
+                user_timezone = user.timezone or config.DEFAULT_TIMEZONE
+                current_utc = datetime.now(timezone.utc)
+                
+                if ZoneInfo is not None:
+                    user_tz = ZoneInfo(user_timezone)
+                    user_time = current_utc.astimezone(user_tz)
+                else:
+                    user_tz = pytz.timezone(user_timezone)
+                    user_time = current_utc.astimezone(user_tz)
+                    
+            except Exception as tz_error:
+                logger.warning(f"Error getting user timezone for notification header: {tz_error}")
+                user_time = datetime.now(timezone.utc)
+            
+            # Add daily notification header with user's local time
             if user_lang == "zh":
                 header = "🌅 **每日市场情绪报告**\n"
-                header += f"📅 {datetime.now().strftime('%Y年%m月%d日')}\n\n"
+                header += f"📅 {user_time.strftime('%Y年%m月%d日')}\n\n"
             else:
                 header = "🌅 **Daily Market Sentiment Report**\n"
-                header += f"📅 {datetime.now().strftime('%B %d, %Y')}\n\n"
+                header += f"📅 {user_time.strftime('%B %d, %Y')}\n\n"
             
             full_message = header + message
+            
+            logger.debug(f"Sending message to user {user.user_id}, length: {len(full_message)}")
             
             # Send message
             await self.app.bot.send_message(
@@ -206,10 +277,10 @@ class NotificationScheduler:
             # Update last notification time
             await update_last_notification(user.user_id, datetime.now(timezone.utc))
             
-            logger.info(f"Daily notification sent to user {user.user_id}")
+            logger.info(f"Daily notification sent successfully to user {user.user_id}")
             
         except Exception as e:
-            logger.error(f"Error sending daily notification to user {user.user_id}: {e}")
+            logger.error(f"Error sending daily notification to user {user.user_id}: {e}", exc_info=True)
     
     async def _update_market_data(self):
         """Update market data cache"""
@@ -404,4 +475,69 @@ async def force_data_update() -> bool:
         
     except Exception as e:
         logger.error(f"Error forcing data update: {e}")
-        return False 
+        return False
+
+async def trigger_test_notification(user_id: int) -> bool:
+    """Trigger immediate test notification for a specific user (admin only)"""
+    try:
+        scheduler = get_scheduler()
+        if not scheduler:
+            logger.error("Scheduler not available for test notification")
+            return False
+        
+        # Get user from database
+        from data.database import UserRepository
+        user = await UserRepository.get_user_by_telegram_id(user_id)
+        if not user:
+            logger.error(f"User {user_id} not found for test notification")
+            return False
+        
+        if not user.is_subscribed:
+            logger.warning(f"User {user_id} is not subscribed, sending test notification anyway")
+        
+        # Send test notification
+        await scheduler._send_daily_notification(user)
+        logger.info(f"Test notification sent to user {user_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error sending test notification to user {user_id}: {e}")
+        return False
+
+async def check_notification_status() -> dict:
+    """Get notification status for debugging"""
+    try:
+        from data.database import get_subscribed_users
+        
+        scheduler = get_scheduler()
+        users = await get_subscribed_users()
+        current_time = datetime.now(timezone.utc)
+        
+        status = {
+            "scheduler_running": scheduler and scheduler.scheduler.running,
+            "current_utc_time": current_time.isoformat(),
+            "subscribed_users_count": len(users),
+            "users_ready_for_notification": 0,
+            "user_details": []
+        }
+        
+        if scheduler:
+            for user in users:
+                should_notify = await scheduler._should_send_notification(user, current_time)
+                user_info = {
+                    "user_id": user.user_id,
+                    "push_time": user.push_time,
+                    "timezone": user.timezone,
+                    "last_notification": user.last_notification_sent.isoformat() if user.last_notification_sent else None,
+                    "should_notify_now": should_notify
+                }
+                status["user_details"].append(user_info)
+                
+                if should_notify:
+                    status["users_ready_for_notification"] += 1
+        
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error checking notification status: {e}")
+        return {"error": str(e)} 

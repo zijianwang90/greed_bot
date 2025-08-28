@@ -247,9 +247,10 @@ async def format_fear_greed_message(
         Formatted message string
     """
     try:
-        current_value = data.get("value", 0)
+        # Handle different data formats - check for both 'value' and 'score' fields
+        current_value = data.get("value") or data.get("score", 0)
         timestamp = data.get("timestamp", datetime.now())
-        previous_value = data.get("previous_value", current_value)
+        previous_value = data.get("previous_value") or data.get("previous_close", current_value)
         
         # Format timestamp
         if isinstance(timestamp, str):

@@ -17,7 +17,8 @@ from bot.handlers import (
     start_handler, help_handler, current_handler, 
     subscribe_handler, unsubscribe_handler, settings_handler, 
     history_handler, message_handler, button_handler, error_handler,
-    cache_status_handler, refresh_handler, debug_handler, timezone_handler
+    cache_status_handler, refresh_handler, debug_handler, timezone_handler,
+    test_notification_handler, notification_status_handler
 )
 
 # Setup logging
@@ -46,7 +47,16 @@ async def startup_callback(application: Application) -> None:
     await init_database()
     logger.info("Database initialized successfully!")
     
-    # Note: Scheduler is temporarily disabled to isolate the issue
+    # Setup scheduler for notifications
+    logger.info("Setting up notification scheduler...")
+    try:
+        from bot.scheduler import setup_scheduler
+        scheduler = await setup_scheduler(application)
+        logger.info("Notification scheduler started successfully!")
+    except Exception as e:
+        logger.error(f"Failed to start scheduler: {e}")
+        logger.warning("Bot will continue without scheduled notifications")
+    
     logger.info("Bot startup complete!")
 
 def main():
@@ -71,6 +81,8 @@ def main():
         app.add_handler(CommandHandler("cache", cache_status_handler))
         app.add_handler(CommandHandler("refresh", refresh_handler))
         app.add_handler(CommandHandler("debug", debug_handler))
+        app.add_handler(CommandHandler("test_notification", test_notification_handler))
+        app.add_handler(CommandHandler("notification_status", notification_status_handler))
         
         # Callback query handler
         app.add_handler(CallbackQueryHandler(button_handler))

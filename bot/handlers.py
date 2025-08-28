@@ -108,7 +108,9 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "**🔧 Admin Commands:**\n"
         "• `/cache` - View cache status\n"
         "• `/refresh` - Force refresh cache\n"
-        "• `/debug` - Debug cache issues\n\n"
+        "• `/debug` - Debug cache issues\n"
+        "• `/test_notification [user_id]` - Send test notification\n"
+        "• `/notification_status` - Check notification status\n\n"
         "**📈 About the Index:**\n"
         "The CNN Fear & Greed Index measures market sentiment:\n"
         "• 0-24: Extreme Fear 😨\n"
@@ -908,4 +910,85 @@ async def timezone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.error(f"Error in timezone_handler: {e}")
         await update.message.reply_text(
             "❌ Error updating timezone. Please try again later."
-        ) 
+        )
+
+
+async def test_notification_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /test_notification command - send test notification (admin only)"""
+    user_id = update.effective_user.id if update.effective_user else None
+    
+    # Check if user is admin
+    if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
+        await update.message.reply_text("❌ This command is only available to administrators.")
+        return
+    
+    try:
+        # Check if target user ID is provided
+        args = context.args
+        target_user_id = int(args[0]) if args else user_id
+        
+        loading_msg = await update.message.reply_text(f"🔄 Sending test notification to user {target_user_id}...")
+        
+        from bot.scheduler import trigger_test_notification
+        success = await trigger_test_notification(target_user_id)
+        
+        if success:
+            message = f"✅ Test notification sent successfully to user {target_user_id}"
+        else:
+            message = f"❌ Failed to send test notification to user {target_user_id}"
+        
+        await loading_msg.edit_text(message)
+        
+    except ValueError:
+        await update.message.reply_text("❌ Invalid user ID. Usage: /test_notification [user_id]")
+    except Exception as e:
+        logger.error(f"Error in test_notification_handler: {e}")
+        await update.message.reply_text(f"❌ Error sending test notification: {str(e)}")
+
+
+async def notification_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /notification_status command - show notification status (admin only)"""
+    user_id = update.effective_user.id if update.effective_user else None
+    
+    # Check if user is admin
+    if not user_id or (config.ADMIN_USER_ID and user_id != int(config.ADMIN_USER_ID)):
+        await update.message.reply_text("❌ This command is only available to administrators.")
+        return
+    
+    try:
+        loading_msg = await update.message.reply_text("🔄 Checking notification status...")
+        
+        from bot.scheduler import check_notification_status
+        status = await check_notification_status()
+        
+        if "error" in status:
+            message = f"❌ Error checking status: {status['error']}"
+        else:
+            message = (
+                f"📊 **Notification Status**\n\n"
+                f"🔧 **Scheduler Running**: {'✅' if status['scheduler_running'] else '❌'}\n"
+                f"🕐 **Current UTC Time**: {status['current_utc_time']}\n"
+                f"👥 **Subscribed Users**: {status['subscribed_users_count']}\n"
+                f"🔔 **Ready for Notification**: {status['users_ready_for_notification']}\n\n"
+            )
+            
+            if status['user_details']:
+                message += "**User Details:**\n"
+                for user_info in status['user_details'][:5]:  # Show first 5 users
+                    should_notify = "🔔" if user_info['should_notify_now'] else "⏸️"
+                    message += (
+                        f"{should_notify} User {user_info['user_id']}: "
+                        f"{user_info['push_time']} {user_info['timezone']}\n"
+                    )
+                
+                if len(status['user_details']) > 5:
+                    message += f"... and {len(status['user_details']) - 5} more users\n"
+        
+        await loading_msg.edit_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in notification_status_handler: {e}")
+        await update.message.reply_text(f"❌ Error checking notification status: {str(e)}") 
