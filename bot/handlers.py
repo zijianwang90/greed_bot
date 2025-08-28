@@ -56,6 +56,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             "🔔 Set custom notification times\n\n"
             "**Available Commands:**\n"
             "• /current - Current market sentiment\n"
+            "• /history - View historical data and trends\n"
             "• /subscribe - Subscribe to daily updates\n"
             "• /unsubscribe - Unsubscribe from updates\n"
             "• /help - Show all commands\n\n"
@@ -71,9 +72,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         keyboard = [
             [
                 InlineKeyboardButton("📊 Current Index", callback_data="current"),
-                InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe")
+                InlineKeyboardButton("📈 History", callback_data="history_7")
             ],
             [
+                InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe"),
                 InlineKeyboardButton("❓ Help", callback_data="help")
             ]
         ]
@@ -100,6 +102,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "**📊 Commands:**\n"
         "• `/start` - Start the bot and see welcome message\n"
         "• `/current` - Get current Fear & Greed Index\n"
+        "• `/history [days]` - View historical data (default: 7 days)\n"
         "• `/subscribe` - Subscribe to daily updates\n"
         "• `/unsubscribe` - Unsubscribe from updates\n"
         "• `/settings` - Configure your preferences\n"
@@ -258,6 +261,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await help_callback(query)
     elif callback_data == "force_refresh":
         await force_refresh_callback(query)
+    elif callback_data.startswith("history_"):
+        await history_callback(query, callback_data)
+    elif callback_data == "refresh":
+        await refresh_callback(query)
 
 async def current_callback(query):
     """Handle current button callback"""
@@ -560,24 +567,70 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not user_id:
         return
     
-    loading_msg = await update.message.reply_text("📈 Fetching historical data...")
+    loading_msg = await update.message.reply_text("📈 正在获取历史数据...")
     
     try:
-        # For now, provide a simple message about historical data
-        message = (
-            "📈 **Historical Data Feature**\n\n"
-            "This feature will show historical Fear & Greed Index data and trends.\n\n"
-            "📊 **Coming Soon:**\n"
-            "• 7-day trends\n"
-            "• 30-day averages\n"
-            "• Market correlation data\n\n"
-            "For now, use /current to get the latest index value."
+        # 获取用户信息，用于时区设置
+        user = await get_user_or_create(update.effective_user)
+        user_timezone = user.timezone if user else "UTC"
+        
+        # 解析命令参数
+        args = context.args
+        days = 7  # 默认7天
+        
+        if args and len(args) > 0:
+            try:
+                days = int(args[0])
+                if days <= 0 or days > 365:
+                    days = 7
+            except ValueError:
+                days = 7
+        
+        # 从数据库获取历史数据
+        from data.database import FearGreedRepository
+        historical_records = await FearGreedRepository.get_fear_greed_history(days=days)
+        
+        if not historical_records:
+            message = (
+                "📈 **历史数据**\n\n"
+                "❌ 暂无历史数据可用\n\n"
+                "请先使用 /current 获取当前数据，系统会开始收集历史记录。"
+            )
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 当前指数", callback_data="current"),
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                ]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await loading_msg.edit_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+            return
+        
+        # 格式化历史数据
+        from bot.utils import format_historical_data_enhanced
+        message = await format_historical_data_enhanced(
+            historical_records, 
+            days=days,
+            user_timezone=user_timezone,
+            language="zh"
         )
         
+        # 创建交互按钮
         keyboard = [
             [
-                InlineKeyboardButton("📊 Current Index", callback_data="current"),
-                InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe")
+                InlineKeyboardButton("📊 7天", callback_data="history_7"),
+                InlineKeyboardButton("📊 30天", callback_data="history_30")
+            ],
+            [
+                InlineKeyboardButton("📈 当前指数", callback_data="current"),
+                InlineKeyboardButton("🔄 刷新", callback_data="refresh")
             ]
         ]
         
@@ -592,7 +645,7 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         logger.error(f"Error in history_handler: {e}")
         await loading_msg.edit_text(
-            "❌ Error fetching historical data. Please try again later."
+            "❌ 获取历史数据时出错，请稍后重试。"
         )
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -768,6 +821,132 @@ async def force_refresh_callback(query):
     except Exception as e:
         logger.error(f"Error in force_refresh_callback: {e}")
         await query.edit_message_text("❌ Error refreshing cache.")
+
+async def history_callback(query, callback_data: str):
+    """Handle history button callbacks"""
+    try:
+        # 提取天数参数
+        if callback_data == "history_7":
+            days = 7
+        elif callback_data == "history_30":
+            days = 30
+        else:
+            days = 7
+        
+        await query.edit_message_text("📈 正在获取历史数据...")
+        
+        # 获取用户信息
+        user_id = query.from_user.id
+        from data.database import get_user
+        user = await get_user(user_id)
+        user_timezone = user.timezone if user else "UTC"
+        
+        # 从数据库获取历史数据
+        from data.database import FearGreedRepository
+        historical_records = await FearGreedRepository.get_fear_greed_history(days=days)
+        
+        if not historical_records:
+            message = (
+                "📈 **历史数据**\n\n"
+                "❌ 暂无历史数据可用\n\n"
+                "请先使用 /current 获取当前数据，系统会开始收集历史记录。"
+            )
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 当前指数", callback_data="current"),
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                ]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+            return
+        
+        # 格式化历史数据
+        from bot.utils import format_historical_data_enhanced
+        message = await format_historical_data_enhanced(
+            historical_records, 
+            days=days,
+            user_timezone=user_timezone,
+            language="zh"
+        )
+        
+        # 创建交互按钮
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 7天", callback_data="history_7"),
+                InlineKeyboardButton("📊 30天", callback_data="history_30")
+            ],
+            [
+                InlineKeyboardButton("📈 当前指数", callback_data="current"),
+                InlineKeyboardButton("🔄 刷新", callback_data="refresh")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in history_callback: {e}")
+        await query.edit_message_text("❌ 获取历史数据时出错，请稍后重试。")
+
+async def refresh_callback(query):
+    """Handle refresh button callback"""
+    try:
+        await query.edit_message_text("🔄 正在刷新数据...")
+        
+        # 强制刷新数据
+        fresh_data = await force_refresh_data()
+        
+        if fresh_data:
+            index_value = fresh_data.get('score', 'N/A')
+            sentiment = get_sentiment_text(index_value)
+            emoji = get_sentiment_emoji(index_value)
+            
+            # 获取用户ID用于时区格式化
+            user_id = query.from_user.id
+            formatted_time = await format_timestamp(fresh_data.get('timestamp', 'Now'), user_id)
+            
+            message = (
+                f"✅ **数据已刷新**\n\n"
+                f"📊 **当前指数**: {index_value}\n"
+                f"{emoji} **市场情绪**: {sentiment}\n\n"
+                f"🕐 **更新时间**: {formatted_time}\n"
+                f"🔗 **数据来源**: {fresh_data.get('source', 'CNN')}"
+            )
+            
+            # 创建新的按钮
+            keyboard = [
+                [
+                    InlineKeyboardButton("📈 历史数据", callback_data="history_7"),
+                    InlineKeyboardButton("🔔 订阅推送", callback_data="subscribe")
+                ]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+        else:
+            await query.edit_message_text("❌ 刷新失败，API可能暂时不可用。")
+        
+    except Exception as e:
+        logger.error(f"Error in refresh_callback: {e}")
+        await query.edit_message_text("❌ 刷新数据时出错。")
 
 
 async def debug_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

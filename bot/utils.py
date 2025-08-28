@@ -539,4 +539,297 @@ async def create_inline_keyboard(buttons: List[List[Dict[str, str]]], language: 
         return keyboard
     except Exception as e:
         logger.error(f"Error creating inline keyboard: {e}")
-        return [] 
+        return []
+
+async def format_historical_data_enhanced(
+    historical_records: List, 
+    days: int = 7,
+    user_timezone: str = "UTC",
+    language: str = "zh"
+) -> str:
+    """增强版历史数据格式化函数"""
+    try:
+        from data.models import FearGreedData
+        
+        if not historical_records:
+            return "❌ 暂无历史数据"
+        
+        # 导入时区相关模块
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            import pytz
+            ZoneInfo = None
+        
+        # 转换为字典格式并按日期排序
+        data_points = []
+        for record in historical_records:
+            if isinstance(record, FearGreedData):
+                # 时区转换
+                record_time = record.date
+                if ZoneInfo:
+                    try:
+                        if record_time.tzinfo is None:
+                            record_time = record_time.replace(tzinfo=ZoneInfo('UTC'))
+                        user_time = record_time.astimezone(ZoneInfo(user_timezone))
+                    except:
+                        user_time = record_time
+                else:
+                    try:
+                        if record_time.tzinfo is None:
+                            utc_time = pytz.UTC.localize(record_time)
+                        else:
+                            utc_time = record_time
+                        user_tz = pytz.timezone(user_timezone)
+                        user_time = utc_time.astimezone(user_tz)
+                    except:
+                        user_time = record_time
+                
+                data_points.append({
+                    'value': record.current_value,
+                    'rating': record.rating,
+                    'date': record.date,
+                    'display_time': user_time,
+                    'previous_close': record.previous_close,
+                    'week_ago': record.week_ago,
+                    'month_ago': record.month_ago,
+                    'year_ago': record.year_ago
+                })
+        
+        # 按日期降序排序
+        data_points.sort(key=lambda x: x['date'], reverse=True)
+        
+        if not data_points:
+            return "❌ 历史数据格式错误"
+        
+        # 构建消息
+        message = f"📈 **恐慌贪婪指数历史 ({days}天)**\n\n"
+        
+        # 最新数据
+        latest = data_points[0]
+        sentiment = get_sentiment_text(latest['value'], language)
+        emoji = get_sentiment_emoji(latest['value'])
+        
+        formatted_time = latest['display_time'].strftime("%m月%d日 %H:%M")
+        message += f"📊 **最新数据:** {latest['value']} - {sentiment} {emoji}\n"
+        message += f"🕐 **更新时间:** {formatted_time}\n\n"
+        
+        # 计算统计信息
+        values = [dp['value'] for dp in data_points]
+        stats = calculate_market_statistics(values, days)
+        
+        if stats:
+            message += f"📊 **{days}天统计信息:**\n"
+            message += f"• 平均值: {stats['average']:.1f}\n"
+            message += f"• 最高值: {stats['max']} {get_sentiment_emoji(stats['max'])}\n"
+            message += f"• 最低值: {stats['min']} {get_sentiment_emoji(stats['min'])}\n"
+            message += f"• 波动幅度: {stats['volatility']}\n\n"
+            
+            # 情绪分布统计
+            dist = stats.get('sentiment_distribution', {})
+            if dist:
+                message += f"📈 **情绪分布统计:**\n"
+                if dist['extreme_fear'] > 0:
+                    message += f"• 极度恐慌: {dist['extreme_fear']}天 ({dist['extreme_fear']/len(values)*100:.1f}%)\n"
+                if dist['fear'] > 0:
+                    message += f"• 恐慌: {dist['fear']}天 ({dist['fear']/len(values)*100:.1f}%)\n"
+                if dist['neutral'] > 0:
+                    message += f"• 中性: {dist['neutral']}天 ({dist['neutral']/len(values)*100:.1f}%)\n"
+                if dist['greed'] > 0:
+                    message += f"• 贪婪: {dist['greed']}天 ({dist['greed']/len(values)*100:.1f}%)\n"
+                if dist['extreme_greed'] > 0:
+                    message += f"• 极度贪婪: {dist['extreme_greed']}天 ({dist['extreme_greed']/len(values)*100:.1f}%)\n"
+                message += "\n"
+        else:
+            avg_value = sum(values) / len(values)
+            max_value = max(values)
+            min_value = min(values)
+            
+            message += f"📊 **{days}天统计信息:**\n"
+            message += f"• 平均值: {avg_value:.1f}\n"
+            message += f"• 最高值: {max_value} {get_sentiment_emoji(max_value)}\n"
+            message += f"• 最低值: {min_value} {get_sentiment_emoji(min_value)}\n"
+            message += f"• 波动幅度: {max_value - min_value}\n\n"
+        
+        # 趋势分析
+        if stats and 'trend_change' in stats:
+            trend_change = stats['trend_change']
+            direction = stats.get('trend_direction', 'stable')
+            
+            if direction == 'up':
+                trend_text = f"📈 **趋势:** 市场情绪转向贪婪 (+{trend_change:.1f})"
+            elif direction == 'down':
+                trend_text = f"📉 **趋势:** 市场情绪转向恐慌 ({trend_change:.1f})"
+            else:
+                trend_text = "📊 **趋势:** 市场情绪相对稳定"
+            
+            message += f"{trend_text}\n\n"
+        elif len(data_points) >= 3:
+            # 备用趋势分析
+            recent_values = values[:3]
+            older_values = values[-3:] if len(values) >= 6 else values[3:6] if len(values) > 3 else values
+            
+            recent_avg = sum(recent_values) / len(recent_values)
+            older_avg = sum(older_values) / len(older_values)
+            
+            trend_change = recent_avg - older_avg
+            
+            if abs(trend_change) > 5:
+                if trend_change > 0:
+                    trend_text = f"📈 **趋势:** 市场情绪转向贪婪 (+{trend_change:.1f})"
+                else:
+                    trend_text = f"📉 **趋势:** 市场情绪转向恐慌 ({trend_change:.1f})"
+            else:
+                trend_text = "📊 **趋势:** 市场情绪相对稳定"
+            
+            message += f"{trend_text}\n\n"
+        
+        # 显示最近几天的详细数据
+        message += f"📅 **最近{min(7, len(data_points))}天详情:**\n"
+        
+        for i, dp in enumerate(data_points[:7]):
+            date_str = dp['display_time'].strftime("%m/%d")
+            value = dp['value']
+            emoji = get_sentiment_emoji(value)
+            
+            # 计算与前一天的变化
+            if i < len(data_points) - 1:
+                prev_value = data_points[i + 1]['value']
+                change = value - prev_value
+                if change > 0:
+                    change_str = f"(+{change})"
+                elif change < 0:
+                    change_str = f"({change})"
+                else:
+                    change_str = "(±0)"
+            else:
+                change_str = ""
+            
+            message += f"• {date_str}: {value} {emoji} {change_str}\n"
+        
+        # 添加简单的ASCII图表
+        if len(data_points) >= 2:
+            chart = generate_simple_chart(values[:min(14, len(values))])
+            message += f"\n📊 **趋势图表 (最近{min(14, len(values))}天):**\n```\n{chart}\n```\n"
+        
+        # 添加数据来源和免责声明
+        message += f"📝 **数据来源:** CNN Fear & Greed Index\n"
+        message += f"⏰ **时区:** {user_timezone}\n"
+        message += f"📊 **记录数量:** {len(data_points)} 条"
+        
+        return message
+        
+    except Exception as e:
+        logger.error(f"Error formatting enhanced historical data: {e}")
+        return f"❌ 格式化历史数据时出错: {str(e)}"
+
+def generate_simple_chart(values: List[int], width: int = 30, height: int = 8) -> str:
+    """生成简单的ASCII图表"""
+    try:
+        if not values or len(values) < 2:
+            return "数据不足以生成图表"
+        
+        # 确保值在0-100范围内
+        values = [max(0, min(100, v)) for v in values]
+        
+        # 创建图表矩阵
+        chart = [[' ' for _ in range(width)] for _ in range(height)]
+        
+        # 计算每个数据点的位置
+        for i, value in enumerate(values[:width]):
+            x = i
+            y = height - 1 - int((value / 100) * (height - 1))
+            
+            # 根据值选择字符
+            if value >= 75:
+                char = '🟢'  # 极度贪婪
+            elif value >= 55:
+                char = '🟡'  # 贪婪
+            elif value >= 45:
+                char = '⚪'  # 中性
+            elif value >= 25:
+                char = '🟠'  # 恐慌
+            else:
+                char = '🔴'  # 极度恐慌
+            
+            if x < width and 0 <= y < height:
+                chart[y][x] = char
+        
+        # 添加网格线和标签
+        result = []
+        
+        # 顶部标签
+        result.append("100 ┬" + "─" * (width - 2) + "┐")
+        
+        # 图表内容
+        for row_idx, row in enumerate(chart):
+            if row_idx == height // 4:
+                label = " 75 ├"
+            elif row_idx == height // 2:
+                label = " 50 ├"
+            elif row_idx == 3 * height // 4:
+                label = " 25 ├"
+            else:
+                label = "    │"
+            
+            result.append(label + "".join(row) + "│")
+        
+        # 底部标签
+        result.append("  0 └" + "─" * (width - 2) + "┘")
+        
+        # 添加图例
+        result.append("")
+        result.append("🔴极度恐慌 🟠恐慌 ⚪中性 🟡贪婪 🟢极度贪婪")
+        
+        return "\n".join(result)
+        
+    except Exception as e:
+        logger.error(f"Error generating chart: {e}")
+        return "图表生成失败"
+
+def calculate_market_statistics(values: List[int], days: int) -> Dict[str, Any]:
+    """计算市场统计信息"""
+    try:
+        if not values:
+            return {}
+        
+        stats = {
+            'average': sum(values) / len(values),
+            'max': max(values),
+            'min': min(values),
+            'volatility': max(values) - min(values),
+            'days_count': len(values),
+            'period': days
+        }
+        
+        # 计算情绪分布
+        extreme_fear = sum(1 for v in values if v <= 25)
+        fear = sum(1 for v in values if 25 < v <= 45)
+        neutral = sum(1 for v in values if 45 < v <= 55)
+        greed = sum(1 for v in values if 55 < v <= 75)
+        extreme_greed = sum(1 for v in values if v > 75)
+        
+        stats['sentiment_distribution'] = {
+            'extreme_fear': extreme_fear,
+            'fear': fear,
+            'neutral': neutral,
+            'greed': greed,
+            'extreme_greed': extreme_greed
+        }
+        
+        # 计算趋势
+        if len(values) >= 3:
+            recent_avg = sum(values[:3]) / 3
+            if len(values) >= 6:
+                older_avg = sum(values[-3:]) / 3
+            else:
+                older_avg = sum(values[3:]) / max(1, len(values) - 3)
+            
+            stats['trend_change'] = recent_avg - older_avg
+            stats['trend_direction'] = 'up' if stats['trend_change'] > 5 else 'down' if stats['trend_change'] < -5 else 'stable'
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error calculating statistics: {e}")
+        return {} 
