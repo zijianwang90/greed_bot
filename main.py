@@ -14,9 +14,9 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 import config
 from data.database import init_database
 from bot.handlers import (
-    start_handler, help_handler, current_handler, 
-    subscribe_handler, unsubscribe_handler, settings_handler, 
-    history_handler, message_handler, button_handler, error_handler,
+    start_handler, help_handler, current_handler,
+    subscribe_handler, unsubscribe_handler, settings_handler,
+    history_handler, vix_handler, vix_history_handler, message_handler, button_handler, error_handler,
     cache_status_handler, refresh_handler, debug_handler, timezone_handler,
     test_notification_handler, notification_status_handler
 )
@@ -73,6 +73,8 @@ def main():
         app.add_handler(CommandHandler("start", start_handler))
         app.add_handler(CommandHandler("help", help_handler))
         app.add_handler(CommandHandler("current", current_handler))
+        app.add_handler(CommandHandler("vix", vix_handler))
+        app.add_handler(CommandHandler("vix_history", vix_history_handler))
         app.add_handler(CommandHandler("subscribe", subscribe_handler))
         app.add_handler(CommandHandler("unsubscribe", unsubscribe_handler))
         app.add_handler(CommandHandler("settings", settings_handler))

@@ -963,6 +963,9 @@ async def refresh_callback(query):
 
 async def vix_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /vix command - get current VIX index data"""
+    user_id = update.effective_user.id if update.effective_user else None
+    logger.info(f"VIX command received from user {user_id}")
+
     loading_msg = await update.message.reply_text("📊 获取VIX波动率指数数据...")
 
     try:
@@ -970,14 +973,16 @@ async def vix_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         from data.fetcher import FearGreedDataFetcher
         from bot.utils import format_vix_message
 
-        # Get user ID for timezone formatting
-        user_id = update.effective_user.id if update.effective_user else None
+        # Get user ID for timezone formatting (already defined above)
+        logger.info(f"Fetching VIX data for user {user_id}")
 
         # Fetch VIX data
         async with FearGreedDataFetcher() as fetcher:
             vix_data = await fetcher.get_vix_data()
+            logger.info(f"VIX data fetched: {vix_data is not None}")
 
         if vix_data:
+            logger.info(f"Formatting VIX message for user {user_id}")
             # Format and send VIX message
             message = await format_vix_message(vix_data, user_id)
 
@@ -1037,6 +1042,8 @@ async def vix_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def vix_history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /vix_history command - get VIX historical data"""
     user_id = update.effective_user.id if update.effective_user else None
+    logger.info(f"VIX history command received from user {user_id}")
+
     if not user_id:
         return
 
@@ -1054,6 +1061,8 @@ async def vix_history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     days = 7
             except ValueError:
                 days = 7
+
+        logger.info(f"VIX history request: days={days}, user={user_id}")
 
         # Get user timezone
         user = await get_user_or_create(update.effective_user)
