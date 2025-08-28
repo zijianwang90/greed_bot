@@ -125,7 +125,7 @@ class NotificationScheduler:
                         await self._send_daily_notification(user)
                         
                 except Exception as e:
-                    logger.error(f"Error processing notification for user {user.user_id}: {e}")
+                    logger.error(f"Error processing notification for user {user.telegram_id}: {e}")
                     continue
             
         except Exception as e:
@@ -138,7 +138,7 @@ class NotificationScheduler:
             notification_time = user.push_time or config.DEFAULT_NOTIFICATION_TIME
             user_timezone = user.timezone or config.DEFAULT_TIMEZONE
             
-            logger.debug(f"Checking notification for user {user.user_id}: time={notification_time}, tz={user_timezone}")
+            logger.debug(f"Checking notification for user {user.telegram_id}: time={notification_time}, tz={user_timezone}")
             
             # Parse notification time
             hour, minute = map(int, notification_time.split(':'))
@@ -162,10 +162,10 @@ class NotificationScheduler:
                     user_tz = pytz.timezone(user_timezone)
                     user_current_time = current_time.astimezone(user_tz)
                 
-                logger.debug(f"User {user.user_id} local time: {user_current_time}, target: {hour:02d}:{minute:02d}")
+                logger.debug(f"User {user.telegram_id} local time: {user_current_time}, target: {hour:02d}:{minute:02d}")
                 
             except Exception as tz_error:
-                logger.warning(f"Invalid timezone '{user_timezone}' for user {user.user_id}: {tz_error}, using UTC")
+                logger.warning(f"Invalid timezone '{user_timezone}' for user {user.telegram_id}: {tz_error}, using UTC")
                 user_current_time = current_time
             
             # Check if it's the right time to send notification (within 1 minute window)
@@ -185,41 +185,41 @@ class NotificationScheduler:
                         last_date = last_notification_local.date()
                         current_date = user_current_time.date()
                         
-                        logger.debug(f"User {user.user_id} last notification: {last_date}, current: {current_date}")
+                        logger.debug(f"User {user.telegram_id} last notification: {last_date}, current: {current_date}")
                         
                         if last_date >= current_date:
-                            logger.debug(f"User {user.user_id} already received notification today")
+                            logger.debug(f"User {user.telegram_id} already received notification today")
                             return False  # Already sent today
                     except Exception as date_error:
-                        logger.warning(f"Error comparing notification dates for user {user.user_id}: {date_error}")
+                        logger.warning(f"Error comparing notification dates for user {user.telegram_id}: {date_error}")
                         # If there's an error, check based on UTC dates as fallback
                         last_date = last_notification.date() if last_notification.tzinfo else last_notification.date()
                         current_date = current_time.date()
                         if last_date >= current_date:
                             return False
                 
-                logger.info(f"User {user.user_id} should receive notification now")
+                logger.info(f"User {user.telegram_id} should receive notification now")
                 return True
             
             return False
             
         except Exception as e:
-            logger.error(f"Error checking notification time for user {user.user_id}: {e}")
+            logger.error(f"Error checking notification time for user {user.telegram_id}: {e}")
             return False
     
     async def _send_daily_notification(self, user):
         """Send daily notification to a user"""
         try:
-            logger.info(f"Sending daily notification to user {user.user_id}")
+            logger.info(f"Sending daily notification to user {user.telegram_id}")
             
             # Get current market data
             current_data = await self.data_fetcher.get_current_fear_greed_index()
             
             if not current_data:
-                logger.warning(f"No market data available for notification to user {user.user_id}")
+                logger.warning(f"No market data available for notification to user {user.telegram_id}")
                 return
             
-            logger.debug(f"Market data for user {user.user_id}: {current_data}")
+            logger.debug(f"Market data for user {user.telegram_id}: {current_data}")
             
             # Get user language
             user_lang = user.language_code or config.DEFAULT_LANGUAGE
@@ -264,23 +264,23 @@ class NotificationScheduler:
             
             full_message = header + message
             
-            logger.debug(f"Sending message to user {user.user_id}, length: {len(full_message)}")
+            logger.debug(f"Sending message to user {user.telegram_id}, length: {len(full_message)}")
             
             # Send message
             await self.app.bot.send_message(
-                chat_id=user.user_id,
+                chat_id=user.telegram_id,
                 text=full_message,
                 parse_mode='Markdown',
                 disable_web_page_preview=True
             )
             
             # Update last notification time
-            await update_last_notification(user.user_id, datetime.now(timezone.utc))
+            await update_last_notification(user.telegram_id, datetime.now(timezone.utc))
             
-            logger.info(f"Daily notification sent successfully to user {user.user_id}")
+            logger.info(f"Daily notification sent successfully to user {user.telegram_id}")
             
         except Exception as e:
-            logger.error(f"Error sending daily notification to user {user.user_id}: {e}", exc_info=True)
+            logger.error(f"Error sending daily notification to user {user.telegram_id}: {e}", exc_info=True)
     
     async def _update_market_data(self):
         """Update market data cache"""
@@ -357,7 +357,7 @@ class NotificationScheduler:
                         continue
                     
                     await self.app.bot.send_message(
-                        chat_id=user.user_id,
+                        chat_id=user.telegram_id,
                         text=message,
                         parse_mode='Markdown',
                         disable_web_page_preview=True
@@ -369,7 +369,7 @@ class NotificationScheduler:
                     await asyncio.sleep(0.1)
                     
                 except Exception as e:
-                    logger.error(f"Error broadcasting to user {user.user_id}: {e}")
+                    logger.error(f"Error broadcasting to user {user.telegram_id}: {e}")
                     failed_count += 1
                     continue
             
@@ -551,7 +551,7 @@ async def check_notification_status() -> dict:
                 try:
                     should_notify = await scheduler._should_send_notification(user, current_time)
                     user_info = {
-                        "user_id": user.user_id,
+                        "user_id": user.telegram_id,
                         "push_time": user.push_time or "09:00",
                         "timezone": user.timezone or "UTC", 
                         "last_notification": user.last_notification_sent.strftime('%Y-%m-%d %H:%M:%S') if user.last_notification_sent else None,
@@ -563,10 +563,10 @@ async def check_notification_status() -> dict:
                         status["users_ready_for_notification"] += 1
                         
                 except Exception as user_error:
-                    logger.warning(f"Error processing user {user.user_id}: {user_error}")
+                    logger.warning(f"Error processing user {user.telegram_id}: {user_error}")
                     # Add user with error info
                     status["user_details"].append({
-                        "user_id": user.user_id,
+                        "user_id": user.telegram_id,
                         "error": str(user_error)
                     })
         
