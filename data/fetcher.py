@@ -224,167 +224,49 @@ class FearGreedDataFetcher:
             return "Extreme Greed"
     
     async def get_vix_data(self) -> Optional[Dict]:
-        """获取 VIX 波动率指数数据"""
-        # 尝试多个数据源，包括替代源
-        vix_sources = [
-            {
-                'name': 'Finnhub VIX',
-                'url': 'https://finnhub.io/api/v1/quote?symbol=VIX&token=demo',
-                'parser': self._parse_finnhub_data
-            },
-            {
-                'name': 'Alpha Vantage VIX',
-                'url': 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=VIX&apikey=demo',
-                'parser': self._parse_alpha_vantage_data
-            },
-            {
-                'name': 'IEX Cloud VIX',
-                'url': 'https://cloud.iexapis.com/stable/stock/vix/quote?token=Tpk_059b97af715d417d9f49f50b51b1c448',
-                'parser': self._parse_iex_data
-            },
-            {
-                'name': 'Yahoo Finance Chart API', 
-                'url': 'https://query1.finance.yahoo.com/v8/finance/chart/^VIX',
-                'parser': self._parse_yahoo_chart_data
-            },
-            {
-                'name': 'Yahoo Finance Quote API',
-                'url': 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=^VIX',
-                'parser': self._parse_yahoo_quote_data
+        """获取 VIX 波动率指数数据 - 使用 Alpha Vantage API"""
+        try:
+            import config_local
+            api_key = config_local.ALPHA_VANTAGE_API_KEY
+            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=VIX&apikey={api_key}"
+            
+            logger.info("Fetching VIX data from Alpha Vantage API...")
+            
+            # 简单的请求头
+            headers = {
+                'Accept': 'application/json',
+                'User-Agent': 'VIX-Greed-Bot/1.0'
             }
-        ]
-        
-        for i, source in enumerate(vix_sources):
-            try:
-                logger.info(f"Trying VIX source {i+1}/{len(vix_sources)}: {source['name']}")
+            
+            async with self.session.get(url, headers=headers) as response:
+                logger.info(f"Alpha Vantage VIX API response status: {response.status}")
                 
-                # 添加延迟，对Yahoo Finance API使用更长延迟
-                import random
-                is_yahoo = 'yahoo' in source['name'].lower()
-                delay = random.uniform(3.0, 6.0) if is_yahoo else random.uniform(0.5, 1.5)
-                logger.info(f"Waiting {delay:.1f}s before request to {source['name']}...")
-                await asyncio.sleep(delay)
-                
-                # 根据API类型设置特定请求头
-                api_headers = {}
-                if is_yahoo:
-                    api_headers = {
-                        'Accept': 'application/json',
-                        'Cache-Control': 'no-cache',
-                        'Pragma': 'no-cache',
-                        'Referer': 'https://finance.yahoo.com/quote/%5EVIX/',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    }
-                elif 'alpha' in source['name'].lower():
-                    api_headers = {
-                        'Accept': 'application/json',
-                        'User-Agent': 'VIX-Bot/1.0',
-                    }
-                elif 'finnhub' in source['name'].lower():
-                    api_headers = {
-                        'Accept': 'application/json',
-                        'X-Finnhub-Token': 'demo',
-                    }
-                elif 'iex' in source['name'].lower():
-                    api_headers = {
-                        'Accept': 'application/json',
-                        'User-Agent': 'VIX-Greed-Bot/1.0',
-                    }
-                
-                async with self.session.get(source['url'], headers=api_headers) as response:
-                    logger.info(f"VIX {source['name']} response status: {response.status}")
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"Alpha Vantage data structure: {type(data)} with keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
                     
-                    if response.status == 200:
-                        data = await response.json()
-                        logger.info(f"VIX {source['name']} data structure: {type(data)} with keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
-                        parsed_data = source['parser'](data)
-                        
-                        if parsed_data and parsed_data.get('current_value', 0) > 0:
-                            logger.info(f"✅ Successfully got VIX data from {source['name']}: current_value={parsed_data.get('current_value')}")
-                            return parsed_data
-                        else:
-                            logger.warning(f"VIX {source['name']} returned invalid data: {parsed_data}")
-                    
-                    elif response.status == 429:
-                        logger.warning(f"⚠️ VIX {source['name']} rate limited (429), waiting longer before next source...")
-                        await asyncio.sleep(random.uniform(5.0, 8.0))  # 更长的等待时间
-                        continue
-                    elif response.status in [403, 404]:
-                        logger.error(f"❌ VIX {source['name']} access denied or not found ({response.status})")
-                        continue
+                    parsed_data = self._parse_alpha_vantage_data(data)
+                    if parsed_data and parsed_data.get('current_value', 0) > 0:
+                        logger.info(f"✅ Successfully got VIX data from Alpha Vantage: current_value={parsed_data.get('current_value')}")
+                        return parsed_data
                     else:
-                        logger.error(f"❌ VIX {source['name']} returned status {response.status}")
-                        response_text = await response.text()
-                        logger.error(f"Response body: {response_text[:300]}...")
-                        continue
+                        logger.warning(f"Alpha Vantage returned invalid data: {parsed_data}")
+                
+                elif response.status == 401:
+                    logger.error("❌ Alpha Vantage API key invalid or expired")
+                elif response.status == 429:
+                    logger.error("❌ Alpha Vantage API rate limit exceeded")
+                else:
+                    logger.error(f"❌ Alpha Vantage API returned status {response.status}")
+                    response_text = await response.text()
+                    logger.error(f"Response body: {response_text[:200]}...")
                         
-            except asyncio.TimeoutError:
-                logger.error(f"⏰ VIX {source['name']} timed out")
-                continue
-            except Exception as e:
-                logger.error(f"💥 VIX {source['name']} failed with exception: {e}")
-                continue
+        except Exception as e:
+            logger.error(f"💥 Error fetching VIX data from Alpha Vantage: {e}")
         
-        # 如果所有源都失败，返回模拟数据用于演示
-        logger.warning("All VIX sources failed, returning demo data")
+        # 如果Alpha Vantage失败，返回智能演示数据
+        logger.warning("Alpha Vantage API failed, returning intelligent demo data")
         return self._get_demo_vix_data()
-
-    def _parse_finnhub_data(self, data: Dict) -> Optional[Dict]:
-        """解析Finnhub API响应"""
-        try:
-            current_price = float(data.get('c', 0))  # current price
-            previous_close = float(data.get('pc', 0))  # previous close
-            
-            if current_price > 0:
-                change = current_price - previous_close
-                change_percent = (change / previous_close * 100) if previous_close > 0 else 0
-                
-                return {
-                    'current_value': current_price,
-                    'previous_close': previous_close,
-                    'change': change,
-                    'change_percent': change_percent,
-                    'last_update': datetime.now().isoformat(),
-                    'source': 'Finnhub',
-                    'high': data.get('h', 0),
-                    'low': data.get('l', 0),
-                    'open': data.get('o', 0)
-                }
-            
-            logger.warning("Finnhub data incomplete")
-            return None
-            
-        except (KeyError, ValueError, TypeError) as e:
-            logger.error(f"Error parsing Finnhub data: {e}")
-            return None
-
-    def _parse_iex_data(self, data: Dict) -> Optional[Dict]:
-        """解析IEX Cloud API响应"""
-        try:
-            current_price = float(data.get('latestPrice', 0))
-            previous_close = float(data.get('previousClose', 0))
-            
-            if current_price > 0:
-                change = float(data.get('change', 0))
-                change_percent = float(data.get('changePercent', 0)) * 100
-                
-                return {
-                    'current_value': current_price,
-                    'previous_close': previous_close,
-                    'change': change,
-                    'change_percent': change_percent,
-                    'last_update': data.get('latestUpdate', datetime.now().isoformat()),
-                    'source': 'IEX Cloud',
-                    'market_cap': data.get('marketCap'),
-                    'volume': data.get('volume')
-                }
-            
-            logger.warning("IEX Cloud data incomplete")
-            return None
-            
-        except (KeyError, ValueError, TypeError) as e:
-            logger.error(f"Error parsing IEX Cloud data: {e}")
-            return None
 
     def _parse_alpha_vantage_data(self, data: Dict) -> Optional[Dict]:
         """解析Alpha Vantage API响应"""
@@ -415,154 +297,96 @@ class FearGreedDataFetcher:
             logger.error(f"Error parsing Alpha Vantage data: {e}")
             return None
 
-    def _parse_marketwatch_data(self, data: Dict) -> Optional[Dict]:
-        """解析MarketWatch API响应"""
+    def _parse_finnhub_data(self, data: Dict) -> Optional[Dict]:
+        """解析Finnhub API响应"""
         try:
-            if 'TimeValueCollection' in data and data['TimeValueCollection']:
-                recent_data = data['TimeValueCollection'][-1]  # 最新数据
-                previous_data = data['TimeValueCollection'][-2] if len(data['TimeValueCollection']) > 1 else recent_data
-                
-                current_price = float(recent_data.get('Value', 0))
-                previous_price = float(previous_data.get('Value', 0))
-                
-                if current_price > 0:
-                    change = current_price - previous_price
-                    change_percent = (change / previous_price * 100) if previous_price > 0 else 0
-                    
-                    return {
-                        'current_value': current_price,
-                        'previous_close': previous_price,
-                        'change': change,
-                        'change_percent': change_percent,
-                        'last_update': recent_data.get('TimeStamp', datetime.now().isoformat()),
-                        'source': 'MarketWatch'
-                    }
+            current_price = float(data.get('c', 0))  # current price
+            previous_close = float(data.get('pc', 0))  # previous close
             
-            logger.warning("MarketWatch data structure not recognized")
+            if current_price > 0:
+                change = current_price - previous_close
+                change_percent = (change / previous_close * 100) if previous_close > 0 else 0
+                
+                return {
+                    'current_value': current_price,
+                    'previous_close': previous_close,
+                    'change': change,
+                    'change_percent': change_percent,
+                    'last_update': datetime.now().isoformat(),
+                    'source': 'Finnhub',
+                    'high': data.get('h', 0),
+                    'low': data.get('l', 0),
+                    'open': data.get('o', 0)
+                }
+            
+            logger.warning("Finnhub data incomplete")
             return None
             
         except (KeyError, ValueError, TypeError) as e:
-            logger.error(f"Error parsing MarketWatch data: {e}")
-        return None
+            logger.error(f"Error parsing Finnhub data: {e}")
+            return None
+
+
+
+
+
+
     
-    def _parse_yahoo_quote_data(self, data: Dict) -> Dict:
-        """解析Yahoo Finance Quote API数据"""
-        try:
-            if 'quoteResponse' not in data:
-                logger.error("No 'quoteResponse' in Yahoo quote data")
-                return {}
-                
-            quote_response = data['quoteResponse']
-            if 'result' not in quote_response or not quote_response['result']:
-                logger.error("No 'result' in quote response")
-                return {}
-                
-            result = quote_response['result'][0]
-            logger.info(f"Yahoo quote result: {result}")
-            
-            current_price = result.get('regularMarketPrice', 0)
-            previous_close = result.get('regularMarketPreviousClose', 0)
-            
-            if current_price == 0:
-                current_price = result.get('bid', result.get('ask', 0))
-            
-            change = result.get('regularMarketChange', 0)
-            change_percent = result.get('regularMarketChangePercent', 0)
-            
-            if change == 0 and previous_close > 0:
-                change = current_price - previous_close
-                change_percent = (change / previous_close) * 100
-            
-            parsed_result = {
-                'current_value': round(current_price, 2),
-                'previous_close': round(previous_close, 2),
-                'change': round(change, 2),
-                'change_percent': round(change_percent, 2),
-                'last_update': datetime.now().isoformat(),
-                'source': 'Yahoo Finance Quote API'
-            }
-            
-            logger.info(f"Parsed Yahoo quote VIX data: {parsed_result}")
-            return parsed_result
-            
-        except Exception as e:
-            logger.error(f"解析Yahoo Quote VIX数据失败: {e}", exc_info=True)
-            return {}
+
     
     def _get_demo_vix_data(self) -> Dict:
-        """获取演示VIX数据"""
+        """获取智能演示VIX数据 - 模拟真实市场情况"""
         import random
+        from datetime import datetime, timedelta
         
-        # 生成合理范围内的VIX数据 (通常在10-80之间)
-        base_vix = random.uniform(15.0, 35.0)
-        previous_close = base_vix + random.uniform(-2.0, 2.0)
+        # 基于当前时间生成更真实的VIX数据
+        now = datetime.now()
+        hour = now.hour
+        
+        # 根据时间调整VIX水平（开盘和收盘时通常较高）
+        if 9 <= hour <= 10 or 15 <= hour <= 16:  # 开盘和收盘时间
+            base_vix = random.uniform(20.0, 45.0)  # 较高波动
+        elif 11 <= hour <= 14:  # 交易时间
+            base_vix = random.uniform(15.0, 30.0)  # 正常波动
+        else:  # 非交易时间
+            base_vix = random.uniform(12.0, 25.0)  # 较低波动
+        
+        # 生成合理的昨日收盘价
+        previous_close = base_vix + random.uniform(-3.0, 3.0)
+        previous_close = max(10.0, min(80.0, previous_close))  # 限制在合理范围内
+        
+        # 计算变化
         change = base_vix - previous_close
         change_percent = (change / previous_close) * 100
+        
+        # 添加市场情绪标签
+        if base_vix < 15:
+            sentiment = "极低波动 - 市场信心充足"
+        elif base_vix < 20:
+            sentiment = "低波动 - 市场相对平静"
+        elif base_vix < 30:
+            sentiment = "正常波动 - 市场运行平稳"
+        elif base_vix < 40:
+            sentiment = "较高波动 - 市场出现不确定性"
+        else:
+            sentiment = "高波动 - 市场恐慌情绪上升"
         
         demo_data = {
             'current_value': round(base_vix, 2),
             'previous_close': round(previous_close, 2),
             'change': round(change, 2),
             'change_percent': round(change_percent, 2),
-            'last_update': datetime.now().isoformat(),
-            'source': 'Demo Data',
-            'is_demo': True
+            'last_update': now.isoformat(),
+            'source': '智能演示数据',
+            'is_demo': True,
+            'sentiment': sentiment,
+            'market_hours': '交易时间' if 9 <= hour <= 16 else '非交易时间'
         }
         
-        logger.info(f"Generated demo VIX data: {demo_data}")
+        logger.info(f"Generated intelligent demo VIX data: {demo_data}")
         return demo_data
     
-    def _parse_yahoo_chart_data(self, data: Dict) -> Dict:
-        """解析Yahoo Finance Chart API数据"""
-        try:
-            logger.info(f"Parsing VIX data structure: {data}")
-            
-            if 'chart' not in data:
-                logger.error("No 'chart' key in VIX data")
-                return {}
-                
-            chart = data['chart']
-            if 'result' not in chart or not chart['result']:
-                logger.error("No 'result' in chart data or result is empty")
-                return {}
-                
-            result = chart['result'][0]
-            logger.info(f"VIX result keys: {list(result.keys())}")
-            
-            if 'meta' not in result:
-                logger.error("No 'meta' key in result")
-                return {}
-                
-            meta = result['meta']
-            logger.info(f"VIX meta data: {meta}")
-            
-            current_price = meta.get('regularMarketPrice', 0)
-            previous_close = meta.get('previousClose', 0)
-            
-            if current_price == 0:
-                logger.warning("Current price is 0, checking alternative fields")
-                # Try alternative fields
-                current_price = meta.get('currentPrice', 0)
-                if current_price == 0:
-                    current_price = meta.get('price', 0)
-            
-            change = current_price - previous_close if previous_close else 0
-            change_percent = (change / previous_close) * 100 if previous_close else 0
-            
-            parsed_result = {
-                'current_value': round(current_price, 2),
-                'previous_close': round(previous_close, 2),
-                'change': round(change, 2),
-                'change_percent': round(change_percent, 2),
-                'last_update': datetime.now().isoformat()
-            }
-            
-            logger.info(f"Successfully parsed VIX data: {parsed_result}")
-            return parsed_result
-            
-        except Exception as e:
-            logger.error(f"解析 VIX 数据失败: {e}", exc_info=True)
-            return {}
+
     
     async def get_put_call_ratio(self) -> Optional[Dict]:
         """获取 Put/Call 比率数据"""
